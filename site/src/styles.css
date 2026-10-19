@@ -1,0 +1,428 @@
+@import "tailwindcss";
+@source "../src";
+
+/* ========================================================================
+   Tokens. Change the palette here (warm paper tones in oklch); components
+   only reference these through Tailwind utilities or var(--…).
+
+   ONE LIGHT: a soft warm light from the TOP-LEFT. Every highlight, shade and
+   shadow below agrees with it: highlights on top/left edges, shade on
+   bottom/right, shadows falling down-right.
+   ======================================================================== */
+:root {
+  --background: oklch(0.895 0.004 95);
+  --foreground: oklch(0.28 0.008 80);
+  --card: oklch(0.94 0.006 90);
+  --card-foreground: oklch(0.28 0.008 80);
+  --muted: oklch(0.86 0.007 88);
+  --muted-foreground: oklch(0.44 0.012 75); /* ≈5.7:1 on the wall: AA */
+  --primary: oklch(0.5 0.085 52);
+  --primary-foreground: oklch(0.97 0.012 85);
+  --accent: oklch(0.84 0.028 72);
+  --accent-foreground: oklch(0.32 0.03 55);
+  --border: oklch(0.79 0.01 85);
+  --ring: oklch(0.45 0.09 50); /* opaque focus ring: ≈5:1 on the wall (WCAG 1.4.11); the shelf ring adds a light inner edge */
+  --glow: oklch(0.965 0.035 82);
+  --haze: oklch(0.87 0.03 65);
+  --paper: oklch(0.935 0.018 88);
+  --paper-shade: oklch(0.8 0.022 80);
+  --shadow: oklch(0.22 0.01 70);
+
+  /* the room */
+  --sun: oklch(0.99 0.045 85);
+  --desk: oklch(0.57 0.064 58);
+  --desk-light: oklch(0.66 0.062 66);
+  --desk-dark: oklch(0.45 0.058 52);
+  --card-paper: oklch(0.977 0.008 88);
+  --card-rule: oklch(0.62 0.06 240 / 0.075);
+  --card-margin: oklch(0.6 0.13 25 / 0.32);
+
+
+  /* motion */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.2 0 0 0 0 0.12 0 0 0 0 0.05 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@theme inline {
+  --font-display: "Cormorant Garamond", ui-serif, Georgia, "Times New Roman", serif;
+  --font-sans: "Karla", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Space Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-glow: var(--glow);
+  --color-haze: var(--haze);
+  --color-paper: var(--paper);
+  --color-paper-shade: var(--paper-shade);
+  --color-shadow: var(--shadow);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::selection {
+    background: oklch(0.5 0.085 52 / 0.22);
+  }
+  button {
+    cursor: pointer;
+  }
+  input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}
+
+/* SVG fractal-noise grain, laid over the page background (under content). */
+@utility grain {
+  position: relative;
+  isolation: isolate;
+  &::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.35;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.45 0 0 0 0 0.4 0 0 0 1.6 -0.25'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 220px 220px;
+  }
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------------
+   Motion: slow and floating. No springs.
+   ------------------------------------------------------------------------ */
+@keyframes drift {
+  0% {
+    transform: translate3d(-3%, -2%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2.5%, 1.5%, 0) scale(1.07);
+  }
+  100% {
+    transform: translate3d(-1%, 3%, 0) scale(1.02);
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@utility animate-drift {
+  animation: drift 38s ease-in-out infinite alternate;
+}
+@utility animate-rise {
+  animation: rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@utility animate-fade-in {
+  animation: fade-in 700ms ease-out both;
+}
+/* ========================================================================
+   1. The wall: warm plaster lit from the top-left, soft vignette, and a slow
+      patch of window light with a mullion and a few leaf shadows.
+   ======================================================================== */
+.room-light {
+  background:
+    radial-gradient(120% 85% at 6% -8%, color-mix(in oklch, var(--glow) 92%, transparent) 0%, transparent 62%),
+    linear-gradient(180deg, transparent 55%, oklch(0.8 0.012 80 / 0.25) 100%);
+}
+.room-vignette {
+  background: radial-gradient(150% 115% at 22% 8%, transparent 48%, oklch(0.42 0.03 60 / 0.17) 100%);
+}
+.room-dapple {
+  opacity: 0.85;
+  background:
+    radial-gradient(9% 7% at 34% 30%, oklch(0.45 0.03 90 / 0.07), transparent 70%),
+    radial-gradient(6% 9% at 27% 41%, oklch(0.45 0.03 90 / 0.06), transparent 70%),
+    radial-gradient(7% 5% at 41% 45%, oklch(0.45 0.03 90 / 0.05), transparent 70%),
+    linear-gradient(90deg, transparent calc(30% - 22px), oklch(0.45 0.02 70 / 0.045) calc(30% - 5px) calc(30% + 5px), transparent calc(30% + 22px)),
+    linear-gradient(180deg, transparent calc(33% - 22px), oklch(0.45 0.02 70 / 0.045) calc(33% - 5px) calc(33% + 5px), transparent calc(33% + 22px)),
+    radial-gradient(26% 22% at 30% 33%, color-mix(in oklch, var(--sun) 60%, transparent) 0%, transparent 100%);
+  -webkit-mask-image: radial-gradient(28% 24% at 30% 33%, #000 55%, transparent 100%);
+  mask-image: radial-gradient(28% 24% at 30% 33%, #000 55%, transparent 100%);
+  transform-origin: 30% 30%;
+}
+
+/* ========================================================================
+   2. The shelf stage. The shelf itself is WebGL (src/shelf3d) on a
+      transparent canvas: the page is its background.
+   ======================================================================== */
+/* The WebGL stage: horizontal drags belong to the shelf, vertical ones scroll the page. */
+.shelf-stage {
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+}
+/* The canvas fades in once the faces in view are baked (never a blank shelf),
+   and dips briefly while a filter swaps the books. */
+/* while a book flies to or from the desk, the caption's text (not its buttons) steps out of its way */
+[data-testid="shelf-caption"] {
+  transition: opacity 150ms ease-out;
+}
+[data-flying] [data-testid="shelf-caption"] {
+  opacity: 0;
+}
+.shelf-fade {
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+  /* the canvas inside may be taller than the stage for a moment (a book still flying back while
+     the desk folds): it never scrolls the page past the footer */
+  overflow: clip;
+  /* where the drum turns away, books fade softly into the page; the plank's
+     shadow fades out before the canvas's bottom edge (no visible rectangle) */
+  -webkit-mask-image:
+    linear-gradient(to right, transparent 0, #000 7%, #000 93%, transparent 100%),
+    linear-gradient(to bottom, #000 calc(100% - 16px), transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent 0, #000 7%, #000 93%, transparent 100%),
+    linear-gradient(to bottom, #000 calc(100% - 16px), transparent 100%);
+  mask-composite: intersect;
+}
+.shelf-fade[data-ready] {
+  opacity: 1;
+}
+.shelf-fade[data-ready][data-swap] {
+  opacity: 0;
+  transition-duration: 140ms;
+}
+/* Keyboard focus, projected onto the highlighted 3D book: a light inner and a
+   dark outer ring, so one of them clears 3:1 against any spine or the wall. */
+.shelf-focus-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  border-radius: 5px;
+  box-shadow:
+    0 0 0 2px oklch(0.985 0.01 85),
+    0 0 0 4.5px var(--ring);
+  transition: opacity 160ms ease-out;
+  will-change: transform;
+}
+
+/* ========================================================================
+   3. The reading desk (inline detail panel).
+   ======================================================================== */
+.detail-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 600ms var(--ease-out-expo);
+}
+.detail-fold[data-open] {
+  grid-template-rows: 1fr;
+}
+.desk {
+  position: relative;
+  border-radius: 22px;
+  padding: clamp(18px, 4vw, 40px);
+}
+/* the desk's surface: a separate layer under the shelf's canvas, so the 3D book lies on it */
+.desk-surface {
+  position: absolute;
+  inset: 0;
+  border-radius: 22px;
+  /* its own layer: the wood rasterises once, not again on every swap of the card */
+  will-change: transform;
+  /* even wood (no vignette, no falloff): the only shadow on it is the book's own */
+  background:
+    repeating-linear-gradient(177deg, transparent 0 9px, oklch(0.25 0.05 45 / 0.05) 9px 10px, transparent 10px 23px, oklch(0.95 0.04 80 / 0.035) 23px 25px, transparent 25px 34px),
+    repeating-linear-gradient(175.5deg, transparent 0 41px, oklch(0.25 0.05 45 / 0.06) 41px 43px, transparent 43px 67px),
+    var(--noise),
+    var(--desk);
+  background-size: auto, auto, 160px 160px, auto;
+  box-shadow:
+    inset 0 1px 0 oklch(0.97 0.04 80 / 0.4),
+    inset 0 -2px 0 oklch(0.15 0.03 45 / 0.25),
+    8px 22px 40px -26px oklch(0.2 0.04 45 / 0.55);
+}
+.index-card {
+  position: relative;
+  contain: paint;
+  border-radius: 5px;
+  padding: clamp(20px, 3.4vw, 36px);
+  color: var(--foreground);
+  background:
+    radial-gradient(120% 90% at 0% 0%, oklch(1 0 0 / 0.6), transparent 60%),
+    repeating-linear-gradient(180deg, transparent 0 27px, var(--card-rule) 27px 28px),
+    var(--noise),
+    var(--card-paper);
+  background-size: auto, auto, 160px 160px, auto;
+  background-blend-mode: normal, normal, soft-light, normal;
+  box-shadow:
+    0 1px 1px oklch(0.2 0.03 45 / 0.16),
+    0 2px 4px oklch(0.2 0.03 45 / 0.1),
+    12px 20px 30px -18px oklch(0.15 0.03 45 / 0.55);
+  transform: rotate(0.35deg);
+}
+.index-card .card-kicker {
+  border-bottom: 1.5px solid var(--card-margin);
+  padding-bottom: 10px;
+}
+.panel-btn {
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: var(--muted-foreground);
+  transition: color 200ms, background-color 200ms;
+}
+.panel-btn:hover {
+  background: oklch(0.28 0.008 80 / 0.06);
+  color: var(--foreground);
+}
+.panel-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* The opened book, lying on the desk at a slight angle. */
+.lying-shadow {
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  border-radius: 8px;
+  /* a soft shadow without filter: blur() (a blur filter is a costly first raster when the desk opens) */
+  background: oklch(0.15 0.03 45 / 0.42);
+  box-shadow: 0 0 22px 12px oklch(0.15 0.03 45 / 0.36);
+  transform: translate(16px, 22px) scale(0.92, 0.9);
+}
+.lying-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  perspective: 1400px;
+  perspective-origin: 40% -30%;
+}
+.lying-body {
+  position: relative;
+  transform-style: preserve-3d;
+  transform: rotateX(24deg) rotateZ(-3deg);
+  transform-origin: 50% 100%;
+}
+.lying-cover {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  border-radius: 1px 3px 3px 1px;
+  box-shadow:
+    inset 3px 0 0 oklch(0 0 0 / 0.22),
+    inset -1px 0 0 oklch(1 0 0 / 0.14);
+}
+.lying-cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 80% at 8% 0%, oklch(1 0.03 85 / 0.2), transparent 55%),
+    linear-gradient(180deg, transparent 55%, oklch(0.15 0.02 45 / 0.12));
+  pointer-events: none;
+}
+.lying-pages {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  display: block;
+  box-sizing: border-box;
+  transform-origin: 50% 0;
+  transform: rotateX(-90deg);
+  background:
+    linear-gradient(180deg, oklch(1 0.02 85 / 0.2), oklch(0.3 0.03 55 / 0.25)),
+    repeating-linear-gradient(180deg, var(--paper) 0 1px, var(--paper-shade) 1px 1.7px),
+    var(--paper);
+  background-clip: content-box, content-box, content-box;
+}
+
+/* ========================================================================
+   Phones, reduced motion
+   ======================================================================== */
+/* Topic pills on phones: one scrollable row that snaps pill by pill, with a
+   soft fade where there's more (right at rest, left once scrolled), so no pill
+   is ever hard-clipped mid-word. From 640px up they wrap (no mask). */
+@media (max-width: 639.98px) {
+  .pill-row {
+    --fade-l: 0px;
+    --fade-r: 44px;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 16px;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%);
+  }
+  .pill-row[data-scrolled] {
+    --fade-l: 36px;
+  }
+  .pill-row[data-end] {
+    --fade-r: 0px;
+  }
+}
+
+@media (max-width: 640px) {
+  .room-dapple {
+    display: none;
+  }
+  .index-card {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shelf-fade,
+  .detail-fold {
+    transition: none;
+  }
+  .animate-drift {
+    animation: none;
+  }
+  /* !important so inline delays/durations (header stagger, caption) yield */
+  .animate-rise,
+  .animate-fade-in {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+  }
+  .room-dapple {
+    animation: none !important;
+  }
+}

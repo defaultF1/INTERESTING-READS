@@ -1,0 +1,12 @@
+# dependencies and build output
+node_modules/
+site/dist/
+site/dist-*/
+*.tsbuildinfo
+*.local
+
+# local tooling and scratch
+.claude/
+test-report/
+.DS_Store
+Thumbs.db
