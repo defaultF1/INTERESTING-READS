@@ -1,13 +1,17 @@
 import type { Essay } from "../data/essays";
-import { hexLum, inkOn, publisherMark, withAlpha } from "../lib/essayMeta";
+import { publisherMark, withAlpha } from "../lib/essayMeta";
+import { MARKER_COLOUR, MARKER_INK, bookStyle, mixHex, traceWave, traceWaveEdge, type BookStyle } from "../lib/bookStyle";
 import { COVER_W } from "../components/bookFaces";
+import { FONT } from "./fonts";
 
 /**
  * Canvas 2D baking for the WebGL shelf. Every face is drawn once into an
  * atlas page (2048²) after the fonts are ready, then uploaded with mipmaps.
- * The drawings port the CSS spine / Penguin-cover looks: band rules, vertical
- * debossed (or foil) title, author, publisher mark, wear; cover head band,
- * balanced serif title, framed plate, author · publication.
+ * The jackets are matte paper (src/lib/bookStyle.ts: a flat colour and soft
+ * wave shapes): a spine with its title, author and initials in a circle; a
+ * cover with the serif title, the essay's image as an inset panel, author ·
+ * publication; the pages inside. Plus the issue markers' "#N" and the shelf's
+ * hand-drawn outline. The faces are FONT (src/shelf3d/fonts.ts).
  */
 
 const ATLAS = 2048;
@@ -112,13 +116,8 @@ export function idleLoop(work: () => boolean, budget = 6, forced = Math.min(budg
   });
 }
 
-const FACE: Record<Essay["face"], string> = {
-  serif: '"Cormorant Garamond", Georgia, serif',
-  sans: '"Karla", system-ui, sans-serif',
-  mono: '"Space Mono", ui-monospace, monospace',
-};
-const MONO = '"Space Mono", ui-monospace, monospace';
-const SERIF = '"Cormorant Garamond", Georgia, serif';
+const SERIF = FONT.serif;
+const SANS = FONT.sans;
 
 function setSpacing(ctx: CanvasRenderingContext2D, em: number, size: number) {
   const c = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
@@ -137,160 +136,241 @@ function ellipsize(ctx: CanvasRenderingContext2D, text: string, max: number) {
   return text.slice(0, lo).trimEnd() + "…";
 }
 
+/** The jacket's flat colour and its wave shapes on a w × h face. */
+/**
+ * A small tile of paper grain (made once, pixel by pixel): fine light and dark specks, faint
+ * vertical brush streaks and a few soft blotches, as translucent white / black over nothing,
+ * so a plain blend only nudges the jacket's colour.
+ */
+let grainTile: HTMLCanvasElement | null = null;
+function grain() {
+  if (grainTile) return grainTile;
+  const S = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  // (a software canvas, like the scratch canvas the faces are drawn in: an accelerated tile would
+  // be read back from the GPU at every face it fills)
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  const img = g.createImageData(S, S);
+  const d = img.data;
+  const r = seeded(97);
+  const streak = new Float32Array(S);
+  for (let x = 0; x < S; x++) streak[x] = (r() - 0.5) * 0.06;
+  const blots = Array.from({ length: 7 }, () => ({ x: r() * S, y: r() * S, rad: 14 + r() * 26, v: (r() - 0.5) * 0.09 }));
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      // signed lightness: + lighter, - darker
+      let v = streak[x] + (r() < 0.16 ? (r() - 0.5) * 0.5 : 0);
+      for (const b of blots) {
+        // (distance on the torus, so the tile repeats without a seam)
+        const dx = Math.min(Math.abs(x - b.x), S - Math.abs(x - b.x));
+        const dy = Math.min(Math.abs(y - b.y), S - Math.abs(y - b.y));
+        const t = 1 - Math.hypot(dx, dy) / b.rad;
+        if (t > 0) v += b.v * t * t;
+      }
+      const o = (y * S + x) * 4;
+      const c8 = v > 0 ? 255 : 0;
+      d[o] = d[o + 1] = d[o + 2] = c8;
+      d[o + 3] = Math.min(255, Math.round(Math.abs(v) * 255));
+    }
+  g.putImageData(img, 0, 0);
+  return (grainTile = c);
+}
+
+/**
+ * The jacket on a w × h face: its colour with a faint tone from head to foot, the wave shapes
+ * (each blending from a mix of both colours at its edge into its own, the edge feathered
+ * softly, not cut out), and the paper's grain over all of it at device resolution.
+ */
+function jacket(ctx: CanvasRenderingContext2D, st: BookStyle, w: number, h: number) {
+  ctx.fillStyle = st.base;
+  ctx.fillRect(0, 0, w, h);
+  let g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, "rgba(255,255,255,0.05)");
+  g.addColorStop(0.45, "rgba(255,255,255,0)");
+  g.addColorStop(1, "rgba(0,0,0,0.1)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  for (const wv of st.waves) {
+    const foot = wv.at === "foot";
+    const edge = (foot ? Math.min(wv.y0, wv.ym, wv.y1) : Math.max(wv.y0, wv.ym, wv.y1)) * h;
+    const far = foot ? h : 0;
+    const blend = mixHex(wv.colour, st.base, 0.4);
+    g = ctx.createLinearGradient(0, edge, 0, far);
+    g.addColorStop(0, blend);
+    g.addColorStop(0.3, wv.colour);
+    g.addColorStop(1, mixHex(wv.colour, "#000000", 0.1));
+    ctx.beginPath();
+    traceWave(ctx, wv, w, h);
+    ctx.fillStyle = g;
+    ctx.fill();
+    // the feathered edge: the curve stroked soft in the two colours' mix, widest the faintest
+    ctx.strokeStyle = mixHex(st.base, wv.colour, 0.5);
+    ctx.lineCap = "round";
+    for (const [lw, a] of [[6, 0.12], [3, 0.2], [1.3, 0.3]] as const) {
+      ctx.globalAlpha = a;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      traceWaveEdge(ctx, wv, w, h);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  // the paper's grain, one tile texel per device pixel
+  const pat = ctx.createPattern(grain(), "repeat");
+  if (pat) {
+    const m = ctx.getTransform();
+    pat.setTransform(new DOMMatrix([1 / m.a, 0, 0, 1 / m.d, 0, 0]));
+    ctx.save();
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = pat;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+}
+
+/** The publication's initials in a thin circle, centred at (cx, cy) (letters only: no marks). */
+function initials(ctx: CanvasRenderingContext2D, e: Essay, cx: number, cy: number, d: number, ink: string) {
+  let mark = publisherMark(e.publication);
+  if (d < 14 || mark.length > 2) mark = mark.slice(0, 2);
+  ctx.strokeStyle = withAlpha(ink, 0.8);
+  ctx.lineWidth = Math.max(0.45, d * 0.045);
+  ctx.beginPath();
+  ctx.arc(cx, cy, d / 2, 0, Math.PI * 2);
+  ctx.stroke();
+  const size = d * (mark.length > 1 ? 0.34 : 0.42);
+  ctx.font = `500 ${size}px ${SANS}`;
+  setSpacing(ctx, 0.06, size);
+  ctx.fillStyle = ink;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(mark, cx + size * 0.03, cy + size * 0.04);
+  ctx.textAlign = "start";
+}
+
+/**
+ * Words into at most `max` lines of width `len`, balanced (null if they don't fit whole). The
+ * greedy wrap decides whether they fit (cheap); only a fit is balanced.
+ */
+function fitLines(ctx: CanvasRenderingContext2D, text: string, len: number, max: number): string[] | null {
+  const greedy = wrapLines(ctx, text, len);
+  if (greedy.length > max || greedy.some((l) => ctx.measureText(l).width > len)) return null;
+  return greedy.length > 1 ? balancedLines(ctx, text, len, max) : greedy;
+}
+
 // ---------------------------------------------------------------- spines
 
 /**
- * Draw one spine face at density rho (texels per unit) at (ox, oy).
- * Unit space: w × h CSS px, origin top-left.
+ * Draw one spine face at density rho (texels per unit) at (ox, oy). Unit space: w × h CSS
+ * px, origin top-left. A matte paper jacket: flat colour, the wave shapes at the foot and/or
+ * the head, the title running down from the head (serif sentence case, or tracked capitals),
+ * the author in tiny tracked capitals above the foot, the initials in a circle at the foot.
  */
 export function drawSpine(ctx: CanvasRenderingContext2D, e: Essay, ox: number, oy: number, rho: number) {
-  const { width: w, height: h, spine, ink, face, caps, wear, finish } = e;
-  const band = e.band ?? spine;
-  const rule = Math.abs(hexLum(band) - hexLum(spine)) < 0.1 ? withAlpha(ink, 0.5) : band;
-  const darkInk = hexLum(ink) < 0.5;
+  const { width: w, height: h } = e;
+  const st = bookStyle(e);
   ctx.save();
   ctx.translate(ox, oy);
   ctx.scale(rho, rho);
   ctx.beginPath();
   ctx.rect(0, 0, w, h);
   ctx.clip();
+  jacket(ctx, st, w, h);
 
-  ctx.fillStyle = spine;
-  ctx.fillRect(0, 0, w, h);
+  // the foot: the initials' circle, the author above it (both on the foot's colour)
+  const d = Math.min(15, Math.max(9, w * 0.56));
+  const circleY = h - 7 - d / 2;
+  const showAuthor = w >= 19;
+  const authorSize = Math.min(6, Math.max(4.4, w * 0.17));
+  const authorBottom = circleY - d / 2 - 5;
+  const authorTop = h * st.footTop + 6;
 
-  // material grain (lighting/roughness come from the 3D material)
-  if (finish === "cloth") {
-    ctx.globalAlpha = 0.16;
-    ctx.fillStyle = "#000";
-    for (let y = 0; y < h; y += 2.2) ctx.fillRect(0, y, w, 0.5);
-    ctx.globalAlpha = 0.08;
-    ctx.fillStyle = "#fff";
-    for (let x = 0; x < w; x += 2.2) ctx.fillRect(x, 0, 0.5, h);
-    ctx.globalAlpha = 1;
-  } else {
-    // fine speckle so flat colour reads as paper
-    const n = Math.round((w * h) / (finish === "matte" ? 9 : 18));
-    let seed = (e.id.charCodeAt(e.id.length - 1) * 9301 + 49297) % 233280;
-    const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
-    ctx.fillStyle = "#000";
-    ctx.globalAlpha = finish === "matte" ? 0.07 : 0.035;
-    for (let i = 0; i < n; i++) ctx.fillRect(rnd() * w, rnd() * h, 0.6, 0.6);
-    ctx.globalAlpha = 1;
+  // the title: from just under the head (its wave) down to the foot's wave
+  const serif = st.title === "serif";
+  const zoneTop = Math.max(h * 0.06, h * st.headBottom) + 9;
+  const zoneBottom = (st.footTop < 1 ? h * st.footTop : authorBottom - (showAuthor ? 40 : 0)) - 8;
+  const zone = Math.max(30, zoneBottom - zoneTop);
+  const across = w - 6;
+  const maxLines = w >= 44 ? 2 : 1;
+  const [minS, maxS] = serif ? [9.5, Math.min(16, w * 0.52)] : [6.5, Math.min(10.5, w * 0.36)];
+  const face = serif ? `400 %spx ${SERIF}` : `400 %spx ${SANS}`;
+  const em = serif ? 0 : 0.2;
+  const text = serif ? e.title : e.title.toUpperCase();
+  const linesFor = (s: number) => Math.max(1, Math.min(maxLines, Math.floor(across / (s * 1.12))));
+  // the largest size (in half units) at which the title fits whole: a binary search (a smaller
+  // size fits at least as well), a few measurements per spine
+  const fitAt = (sz: number) => {
+    ctx.font = face.replace("%s", String(sz));
+    setSpacing(ctx, em, sz);
+    return fitLines(ctx, text, zone, linesFor(sz));
+  };
+  let lo = 0;
+  let hi = Math.max(0, Math.floor((Math.max(minS, maxS) - minS) * 2));
+  let lines: string[] | null = fitAt(minS + hi / 2);
+  let size = minS + hi / 2;
+  if (!lines) {
+    hi--;
+    let best: { size: number; lines: string[] } | null = null;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const l = fitAt(minS + mid / 2);
+      if (l) {
+        best = { size: minS + mid / 2, lines: l };
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    if (best) {
+      size = best.size;
+      lines = best.lines;
+      ctx.font = face.replace("%s", String(size));
+      setSpacing(ctx, em, size);
+    }
   }
-
-  // head & foot rules
-  const headTop = Math.round(h * 0.06);
-  const footBottom = Math.round(h * 0.06);
-  ctx.fillStyle = rule;
-  ctx.fillRect(0, headTop, w, 2);
-  ctx.fillRect(0, h - footBottom - 2, w, 2);
-  if (w >= 22) {
-    ctx.fillRect(0, headTop + 4, w, 1);
-    ctx.fillRect(0, h - footBottom - 5, w, 1);
+  if (!lines) {
+    size = minS;
+    ctx.font = face.replace("%s", String(size));
+    setSpacing(ctx, em, size);
+    const n = linesFor(size);
+    lines = wrapLines(ctx, text, zone);
+    if (lines.length > n) lines = [...lines.slice(0, n - 1), ellipsize(ctx, lines.slice(n - 1).join(" "), zone)];
   }
-
-  // lettering
-  const showAuthor = w >= 44;
-  const showMark = w >= 30;
-  const regionTop = headTop + 13;
-  const regionBottom = footBottom + 13 + (showMark ? 20 : 0);
-  const regionLen = h - regionTop - regionBottom;
-  const fit = showAuthor ? 0.34 : face === "serif" ? 0.5 : face === "sans" ? 0.4 : 0.36;
-  const [minS, maxS] = face === "serif" ? [10, 17] : face === "sans" ? [8.5, 13.5] : [8, 12];
-  let size = Math.min(maxS, Math.max(minS, w * fit));
-  if (caps) size *= 0.82;
-  const inkAlpha = 1 - wear * 0.55;
-  const weight = face === "serif" ? "500" : "400";
-  const letterEm = caps ? 0.14 : face === "mono" ? 0.02 : 0.01;
-  const authorSize = Math.max(8, size * 0.62);
-  const gap = Math.round(w * 0.1);
-  const colTitle = size * 1.05;
-  const colAuthor = showAuthor ? authorSize * 1.05 : 0;
-  const total = colTitle + (showAuthor ? gap + colAuthor : 0);
-  const x0 = (w - total) / 2;
-
-  const vertical = (text: string, fontSize: number, colX: number, alpha: number, foil: boolean) => {
+  const lh = size * 1.1;
+  ctx.fillStyle = st.ink;
+  ctx.textBaseline = "middle";
+  // rotated 90° clockwise (like vertical-rl): text runs top -> bottom, the first line on the right
+  lines.forEach((l, i, all) => {
     ctx.save();
-    ctx.font = `${weight} ${fontSize}px ${FACE[face]}`;
-    setSpacing(ctx, letterEm, fontSize);
-    const t = ellipsize(ctx, caps ? text.toUpperCase() : text, regionLen);
+    ctx.translate(w / 2 + ((all.length - 1) / 2 - i) * lh, zoneTop);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillText(l, 0, 0);
+    ctx.restore();
+  });
+
+  if (showAuthor && authorBottom - authorTop > 14) {
+    ctx.save();
+    ctx.font = `500 ${authorSize}px ${SANS}`;
+    setSpacing(ctx, 0.2, authorSize);
+    const t = ellipsize(ctx, e.author.toUpperCase(), authorBottom - authorTop);
     const len = ctx.measureText(t).width;
-    // rotate 90° clockwise (like vertical-rl): text runs top -> bottom,
-    // centred in the region and on the column
-    ctx.translate(colX, regionTop + (regionLen - len) / 2);
+    ctx.translate(w / 2, authorBottom - len);
     ctx.rotate(Math.PI / 2);
     ctx.textBaseline = "middle";
-    ctx.globalAlpha = alpha;
-    if (!foil) {
-      // debossed: the top-left light catches the impression's lower-right lip
-      ctx.fillStyle = darkInk ? "rgba(255,255,255,.3)" : "rgba(0,0,0,.42)";
-      ctx.fillText(t, darkInk ? 0.5 : -0.4, darkInk ? -0.5 : 0.4);
-      ctx.fillStyle = ink;
-      ctx.fillText(t, 0, 0);
-    } else {
-      const g = ctx.createLinearGradient(0, -fontSize / 2, len, fontSize / 2);
-      g.addColorStop(0, "#fbedb6");
-      g.addColorStop(0.28, "#e2bd63");
-      g.addColorStop(0.52, "#a77c2c");
-      g.addColorStop(0.7, "#f2d98f");
-      g.addColorStop(1, "#b78a35");
-      ctx.fillStyle = "rgba(0,0,0,.35)";
-      ctx.fillText(t, 0.3, -0.3);
-      ctx.fillStyle = g;
-      ctx.fillText(t, 0, 0);
-    }
+    ctx.fillStyle = withAlpha(st.footInk, 0.9);
+    ctx.fillText(t, 0, 0);
     ctx.restore();
-  };
-  vertical(e.title, size, x0 + colTitle / 2, inkAlpha, !!e.foil);
-  if (showAuthor) vertical(e.author, authorSize, x0 + colTitle + gap + colAuthor / 2, inkAlpha * 0.78, false);
-
-  if (showMark) {
-    const mark = publisherMark(e.publication);
-    ctx.font = `700 6.2px ${MONO}`;
-    setSpacing(ctx, 0.04, 6.2);
-    const mw = ctx.measureText(mark).width + 6;
-    const mh = 10.2;
-    const mx = (w - mw) / 2;
-    const my = h - footBottom - 11 - mh;
-    ctx.globalAlpha = inkAlpha * 0.85;
-    ctx.strokeStyle = withAlpha(ink, 0.55);
-    ctx.lineWidth = 0.75;
-    ctx.beginPath();
-    ctx.roundRect(mx, my, mw, mh, mh / 2);
-    ctx.stroke();
-    ctx.fillStyle = ink;
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "center";
-    ctx.fillText(mark, w / 2, my + mh / 2 + 0.3);
-    ctx.textAlign = "start";
-    ctx.globalAlpha = 1;
   }
+  initials(ctx, e, w / 2, circleY, d, st.footInk);
 
-  // sun fade / rubbed edges
-  if (wear > 0) {
-    ctx.globalAlpha = wear;
-    let g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, "rgba(255,247,232,.75)");
-    g.addColorStop(0.09, "rgba(255,247,232,0)");
-    g.addColorStop(0.9, "rgba(255,247,232,0)");
-    g.addColorStop(1, "rgba(255,247,232,.65)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-    g = ctx.createLinearGradient(0, 0, w, 0);
-    g.addColorStop(0, "rgba(255,247,232,.5)");
-    g.addColorStop(0.16, "rgba(255,247,232,0)");
-    g.addColorStop(0.84, "rgba(255,247,232,0)");
-    g.addColorStop(1, "rgba(255,247,232,.45)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-    ctx.globalAlpha = 1;
-  }
-  // thin edge darkening so neighbours read as touching
+  // a rounded spine: soft shade into both edges, a faint sheen left of centre (the light is
+  // top-left), so each book reads as a physical one beside its neighbours
   const g = ctx.createLinearGradient(0, 0, w, 0);
-  g.addColorStop(0, "rgba(20,12,4,.38)");
-  g.addColorStop(Math.min(0.5, 2.5 / w), "rgba(20,12,4,0)");
-  g.addColorStop(Math.max(0.5, 1 - 3 / w), "rgba(20,12,4,0)");
-  g.addColorStop(1, "rgba(20,12,4,.45)");
+  const at = (px: number) => Math.min(0.45, px / w);
+  g.addColorStop(0, "rgba(0,0,0,0.34)");
+  g.addColorStop(at(2.5), "rgba(0,0,0,0.1)");
+  g.addColorStop(at(w * 0.3), "rgba(255,255,255,0.07)");
+  g.addColorStop(0.55, "rgba(255,255,255,0)");
+  g.addColorStop(1 - at(4), "rgba(0,0,0,0.1)");
+  g.addColorStop(1, "rgba(0,0,0,0.38)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
@@ -332,8 +412,10 @@ function balancedLines(ctx: CanvasRenderingContext2D, text: string, max: number,
 }
 
 /**
- * The Penguin-style front cover (same layout as the DOM CoverFace), drawn at
- * density rho at (ox, oy). `img` is the cover WebP if it has loaded.
+ * The front cover (the same design as the DOM CoverFace), drawn at density rho at (ox, oy):
+ * the jacket's colour and waves, "Interesting Reads" and "#N" at the head, the title in the
+ * serif, the essay's image as an inset panel, author · publication in tracked capitals on the
+ * foot. `img` is the cover WebP if it has loaded.
  */
 export function drawCover(
   ctx: CanvasRenderingContext2D,
@@ -345,10 +427,8 @@ export function drawCover(
 ) {
   const W = COVER_W;
   const H = e.height;
-  const { spine, ink, title } = e;
-  const band = e.band ?? spine;
-  const bandInk = inkOn(band);
-  const accent = Math.abs(hexLum(band) - hexLum(spine)) < 0.12 ? withAlpha(ink, 0.55) : band;
+  const st = bookStyle(e);
+  const { title } = e;
   const issue = Math.max(...e.issues);
   const hasPlate = Boolean(e.cover);
   const PADX = 13;
@@ -358,82 +438,61 @@ export function drawCover(
   ctx.beginPath();
   ctx.rect(0, 0, W, H);
   ctx.clip();
+  jacket(ctx, st, W, H);
 
-  ctx.fillStyle = spine;
-  ctx.fillRect(0, 0, W, H);
-  let g: CanvasGradient = ctx.createRadialGradient(W * 0.28, H * 0.18, 0, W * 0.28, H * 0.18, W * 1.1);
-  g.addColorStop(0, "rgba(255,255,255,.12)");
-  g.addColorStop(0.62, "rgba(255,255,255,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-  g = ctx.createLinearGradient(0, H * 0.55, 0, H);
-  g.addColorStop(0, "rgba(0,0,0,0)");
-  g.addColorStop(1, "rgba(0,0,0,.12)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-
-  // head band
-  ctx.fillStyle = band;
-  ctx.fillRect(0, 0, W, 15);
-  ctx.fillStyle = bandInk;
-  ctx.font = `400 5.2px ${MONO}`;
-  setSpacing(ctx, 0.22, 5.2);
+  // head: the series and the issue, on the head's colour
+  ctx.fillStyle = st.headInk;
+  ctx.font = `500 5.2px ${SANS}`;
+  setSpacing(ctx, 0.24, 5.2);
   ctx.textBaseline = "middle";
-  ctx.fillText("INTERESTING READS", PADX, 7.8);
-  const nTxt = `Nº ${issue}`.toUpperCase();
+  ctx.globalAlpha = 0.86;
+  ctx.fillText("INTERESTING READS", PADX, 10);
   ctx.textAlign = "right";
-  ctx.fillText(nTxt, W - PADX, 7.8);
+  ctx.font = `600 7px ${SERIF}`;
+  setSpacing(ctx, 0, 7);
+  ctx.fillText(`#${issue}`, W - PADX, 10);
   ctx.textAlign = "start";
+  ctx.globalAlpha = 1;
 
-  // title
+  // title, on the base under the head's wave
   const len = title.length;
   let titleSize = len <= 18 ? 19 : len <= 34 ? 17 : len <= 56 ? 15 : len <= 84 ? 13 : 11.5;
   if (!hasPlate) titleSize *= 1.15;
   const maxLines = len > 84 ? 6 : hasPlate ? 4 : 5;
   ctx.font = `500 ${titleSize}px ${SERIF}`;
-  setSpacing(ctx, -0.005, titleSize);
+  setSpacing(ctx, -0.01, titleSize);
   const lines = balancedLines(ctx, title, W - PADX * 2, maxLines);
-  const lh = titleSize * 1.04;
-  ctx.fillStyle = ink;
+  const lh = titleSize * 1.06;
+  ctx.fillStyle = st.ink;
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  let y = 15 + 12;
+  let y = Math.max(22, H * st.headBottom + 8);
   for (const l of lines) {
     ctx.fillText(l, W / 2, y + lh * 0.8);
     y += lh;
   }
-  // rule
-  y += 7;
-  ctx.fillStyle = accent;
-  ctx.fillRect(W / 2 - 9, y, 18, 1);
-  y += 1;
+  y += 4;
 
-  // foot text (author · publication), 2 lines max
-  ctx.font = `400 5.3px ${MONO}`;
-  setSpacing(ctx, 0.14, 5.3);
+  // foot text (author · publication), 2 lines max, on the foot's colour
+  ctx.font = `500 5.3px ${SANS}`;
+  setSpacing(ctx, 0.16, 5.3);
   const foot = `${e.author}${e.publication && e.publication !== e.author ? ` · ${e.publication}` : ""}`.toUpperCase();
   let footLines = wrapLines(ctx, foot, W - PADX * 2);
   if (footLines.length > 2) footLines = [footLines[0], ellipsize(ctx, footLines.slice(1).join(" "), W - PADX * 2)];
   const footH = footLines.length * 5.3 * 1.5;
-  const footTop = H - 5 - 9 - footH;
+  const footTop = H - 10 - footH;
 
-  // middle: plate or ornament, centred between the rule and the foot
+  // middle: the image panel, or the issue number large, between the title and the foot
   const midTop = y + 6;
-  const midBottom = footTop - 6;
+  const midBottom = footTop - 8;
   if (hasPlate) {
     const ratio = e.coverRatio ?? 1.9;
-    const maxPlateH = H * (len > 56 ? 0.29 : 0.35);
-    const pw = Math.min(W - PADX * 2, maxPlateH * ratio);
+    const maxPlateH = Math.min(H * (len > 56 ? 0.29 : 0.35), midBottom - midTop);
+    const pw = Math.min(W - PADX * 2, Math.max(20, maxPlateH) * ratio);
     const ph = pw / ratio;
     const px = (W - pw) / 2;
     const py = midTop + Math.max(0, (midBottom - midTop - ph) / 2);
-    // soft shadow under the plate
-    const sg = ctx.createRadialGradient(W / 2 + 3, py + ph + 2, 0, W / 2 + 3, py + ph + 2, pw * 0.55);
-    sg.addColorStop(0, "rgba(0,0,0,.32)");
-    sg.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = sg;
-    ctx.fillRect(px - 6, py + ph - 4, pw + 12, 12);
-    ctx.fillStyle = withAlpha(band, 0.6);
+    ctx.fillStyle = withAlpha(st.accent, 0.7);
     ctx.fillRect(px, py, pw, ph);
     if (img) {
       const iw = "naturalWidth" in img ? img.naturalWidth : img.width;
@@ -443,62 +502,47 @@ export function drawCover(
       const sh = ph / s;
       ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, px, py, pw, ph);
     }
-    ctx.strokeStyle = withAlpha(ink, 0.3);
-    ctx.lineWidth = 0.75;
+    ctx.strokeStyle = withAlpha(st.ink, 0.35);
+    ctx.lineWidth = 0.6;
     ctx.strokeRect(px, py, pw, ph);
   } else {
     const cy = (midTop + midBottom) / 2;
-    ctx.fillStyle = accent;
-    ctx.fillRect(W / 2 - 17, cy - 30, 34, 1);
-    ctx.font = `400 5px ${MONO}`;
-    setSpacing(ctx, 0.3, 5);
+    ctx.fillStyle = st.ink;
+    ctx.font = `600 44px ${SERIF}`;
+    setSpacing(ctx, -0.02, 44);
     ctx.textAlign = "center";
-    ctx.fillText("Nº", W / 2, cy - 20);
-    ctx.font = `italic 300 46px ${SERIF}`;
-    setSpacing(ctx, 0, 46);
-    ctx.fillText(String(issue), W / 2, cy + 18);
-    ctx.fillRect(W / 2 - 17, cy + 27, 34, 1);
-    ctx.fillRect(W / 2 - 8, cy + 30.5, 16, 1);
+    ctx.textBaseline = "middle";
+    ctx.fillText(`#${issue}`, W / 2, cy);
   }
 
-  // foot text
-  ctx.font = `400 5.3px ${MONO}`;
-  setSpacing(ctx, 0.14, 5.3);
-  ctx.fillStyle = ink;
-  ctx.globalAlpha = 0.82;
+  ctx.font = `500 5.3px ${SANS}`;
+  setSpacing(ctx, 0.16, 5.3);
+  ctx.fillStyle = st.footInk;
+  ctx.globalAlpha = 0.9;
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   footLines.forEach((l, i) => ctx.fillText(l, W / 2, footTop + 5.3 * 1.5 * (i + 0.8)));
   ctx.globalAlpha = 1;
   ctx.textAlign = "start";
-  // foot band
-  ctx.fillStyle = band;
-  ctx.fillRect(0, H - 5, W, 5);
-  // hinge crease on the spine side
-  g = ctx.createLinearGradient(0, 0, W * 0.07, 0);
-  g.addColorStop(0, "rgba(0,0,0,.3)");
+  // the hinge's crease on the spine side
+  const g = ctx.createLinearGradient(0, 0, W * 0.06, 0);
+  g.addColorStop(0, "rgba(0,0,0,.24)");
   g.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W * 0.07, H);
+  ctx.fillRect(0, 0, W * 0.06, H);
   ctx.restore();
 }
 
 /**
- * A quick stand-in for a cover (its colour, head band and foot rule) for the
- * first frame: at the drum's edges covers are only seen at an angle, and the
- * full Penguin cover replaces it within a moment, in idle time.
+ * A quick stand-in for a cover (its colour and waves) for the first frame: at the drum's
+ * edges covers are only seen at an angle, and the full cover replaces it within a moment,
+ * in idle time.
  */
 export function drawCoverPlain(ctx: CanvasRenderingContext2D, e: Essay, ox: number, oy: number, rho: number) {
-  const W = COVER_W;
-  const H = e.height;
   ctx.save();
   ctx.translate(ox, oy);
   ctx.scale(rho, rho);
-  ctx.fillStyle = e.spine;
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = e.band ?? e.spine;
-  ctx.fillRect(0, 0, W, 15);
-  ctx.fillRect(0, H - 7, W, 7);
+  jacket(ctx, bookStyle(e), COVER_W, e.height);
   ctx.restore();
 }
 
@@ -540,7 +584,7 @@ export function drawInnerPage(ctx: CanvasRenderingContext2D, e: Essay | null, ox
     }
     ctx.fillStyle = "rgba(55,42,30,0.3)";
     ctx.fillRect(W / 2 - 6 + 6, y + 2, 12, 0.8);
-    ctx.font = `400 4.6px ${MONO}`;
+    ctx.font = `500 4.6px ${SANS}`;
     setSpacing(ctx, 0.14, 4.6);
     const foot = [e.author, e.publication !== e.author ? e.publication : null].filter(Boolean).join(" · ").toUpperCase();
     ctx.fillText(ellipsize(ctx, foot, W - 40), W / 2 + 6, y + 14);
@@ -633,7 +677,7 @@ export function drawTextPage(ctx: CanvasRenderingContext2D, e: Essay, ox: number
   ctx.textBaseline = "alphabetic";
   // running header and page number
   ctx.fillStyle = "rgba(55,42,30,0.55)";
-  ctx.font = `400 3.9px ${MONO}`;
+  ctx.font = `500 3.9px ${SANS}`;
   setSpacing(ctx, 0.16, 3.9);
   ctx.fillText(ellipsize(ctx, e.title.toUpperCase(), max - 20), left, 13);
   setSpacing(ctx, 0, 3.9);
@@ -693,42 +737,31 @@ export function drawTitlePage(ctx: CanvasRenderingContext2D, e: Essay, ox: numbe
   ctx.fillStyle = "rgba(48,38,28,0.78)";
   ctx.fillText(ellipsize(ctx, e.author, W - 44), W / 2 + 6, y + 15);
   if (e.publication && e.publication !== e.author) {
-    ctx.font = `italic 400 5.6px ${SERIF}`;
+    ctx.font = `400 5.6px ${SERIF}`;
     ctx.fillText(ellipsize(ctx, e.publication, W - 44), W / 2 + 6, y + 24);
   }
-  ctx.font = `400 3.9px ${MONO}`;
+  ctx.font = `500 3.9px ${SANS}`;
   setSpacing(ctx, 0.18, 3.9);
   ctx.fillStyle = "rgba(55,42,30,0.6)";
   ctx.fillText(`INTERESTING READS${e.issues.length ? ` #${Math.max(...e.issues)}` : ""}`, W / 2 + 6, h - 16);
   ctx.restore();
 }
 
-/** The back cover, plainly: the cover's base colour, its bands, a blurb, the mark and a barcode. */
+/** The back cover, plainly: the jacket's colour and waves, a blurb and a barcode. */
 export function drawBackCover(ctx: CanvasRenderingContext2D, e: Essay, ox: number, oy: number, rho: number, h: number) {
   const W = COVER_W;
+  const st = bookStyle(e);
   ctx.save();
   ctx.translate(ox, oy);
   ctx.scale(rho, rho);
   ctx.beginPath();
   ctx.rect(0, 0, W, h);
   ctx.clip();
-  ctx.fillStyle = e.spine;
-  ctx.fillRect(0, 0, W, h);
-  ctx.fillStyle = e.band ?? e.spine;
-  ctx.fillRect(0, 0, W, 15);
-  ctx.fillRect(0, h - 7, W, 7);
-  // a little wear toward the edges
-  const g = ctx.createLinearGradient(0, 0, W, 0);
-  g.addColorStop(0, "rgba(0,0,0,0.12)");
-  g.addColorStop(0.12, "rgba(0,0,0,0)");
-  g.addColorStop(0.9, "rgba(0,0,0,0)");
-  g.addColorStop(1, "rgba(0,0,0,0.1)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, h);
+  jacket(ctx, st, W, h);
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = e.ink;
-  ctx.font = `400 3.9px ${MONO}`;
+  ctx.fillStyle = st.ink;
+  ctx.font = `500 3.9px ${SANS}`;
   setSpacing(ctx, 0.16, 3.9);
   ctx.fillText("INTERESTING READS", 14, 28);
   setSpacing(ctx, 0, 3.9);
@@ -758,7 +791,7 @@ export function drawBackCover(ctx: CanvasRenderingContext2D, e: Essay, ox: numbe
     ctx.fillRect(x, by + 3, w, 15);
     x += w + 0.6 + r() * 1.2;
   }
-  ctx.font = `400 3.4px ${MONO}`;
+  ctx.font = `500 3.4px ${SANS}`;
   ctx.textAlign = "center";
   ctx.fillText(String(900000 + (hashText(e.id) % 99999)).replace(/(\d{3})(?=\d)/g, "$1 "), bx + 22, by + 22);
   ctx.restore();
@@ -766,41 +799,36 @@ export function drawBackCover(ctx: CanvasRenderingContext2D, e: Essay, ox: numbe
 
 // --------------------------------------------------------------- bookends
 
-/** Brass plate with the issue number engraved, at density rho. 22 × 30 units. */
+/** The label at the head of an issue marker (a short mustard book), at density rho. */
+export const LABEL_W = 24;
+export const LABEL_H = 34;
+/**
+ * The head of an issue marker's spine: the marker's own mustard, with "#N" in the serif in
+ * dark ink near the top. It covers the spine face's full width at its top; the rest of the
+ * marker is the same matte mustard, so the label's edge doesn't show.
+ */
 export function drawPlate(ctx: CanvasRenderingContext2D, issue: number, ox: number, oy: number, rho: number) {
-  const W = 22;
-  const H = 30;
+  const W = LABEL_W;
+  const H = LABEL_H;
   ctx.save();
   ctx.translate(ox, oy);
   ctx.scale(rho, rho);
-  const g = ctx.createLinearGradient(0, 0, W, H);
-  g.addColorStop(0, "#f3e3a6");
-  g.addColorStop(0.45, "#c9a253");
-  g.addColorStop(1, "#7e5c22");
-  ctx.fillStyle = g;
+  ctx.fillStyle = MARKER_COLOUR;
   ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = "rgba(255,248,214,.7)";
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.moveTo(0.4, H);
-  ctx.lineTo(0.4, 0.4);
-  ctx.lineTo(W, 0.4);
-  ctx.stroke();
-  ctx.strokeStyle = "rgba(70,44,8,.55)";
-  ctx.beginPath();
-  ctx.moveTo(W - 0.4, 0);
-  ctx.lineTo(W - 0.4, H - 0.4);
-  ctx.lineTo(0, H - 0.4);
-  ctx.stroke();
-  ctx.font = `700 8.5px ${MONO}`;
-  setSpacing(ctx, -0.03, 8.5);
+  const t = `#${issue}`;
+  let size = 9;
+  ctx.font = `600 ${size}px ${SERIF}`;
+  setSpacing(ctx, -0.02, size);
+  const tw = ctx.measureText(t).width;
+  if (tw > W - 5) {
+    size *= (W - 5) / tw;
+    ctx.font = `600 ${size}px ${SERIF}`;
+    setSpacing(ctx, -0.02, size);
+  }
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  const t = `#${issue}`;
-  ctx.fillStyle = "rgba(255,245,200,.65)";
-  ctx.fillText(t, W / 2 + 0.5, H / 2 + 0.6);
-  ctx.fillStyle = "#4a3410";
-  ctx.fillText(t, W / 2, H / 2);
+  ctx.fillStyle = MARKER_INK;
+  ctx.fillText(t, W / 2, 14);
   ctx.restore();
 }
 
@@ -813,49 +841,48 @@ function canvas(w: number, h: number) {
   return { c, ctx: c.getContext("2d")! };
 }
 
-/** Wood grain strip (tiles along the plank). */
-export function woodTexture() {
-  const { c, ctx } = canvas(1024, 128);
-  ctx.fillStyle = "#8a6440";
-  ctx.fillRect(0, 0, 1024, 128);
-  let seed = 7;
-  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let i = 0; i < 180; i++) {
-    const y = rnd() * 128;
-    const a = 0.03 + rnd() * 0.08;
-    ctx.strokeStyle = rnd() > 0.5 ? `rgba(60,36,16,${a})` : `rgba(255,226,180,${a * 0.6})`;
-    ctx.lineWidth = 0.6 + rnd() * 1.6;
-    ctx.beginPath();
-    const amp = 1 + rnd() * 3;
-    const f = 0.004 + rnd() * 0.01;
-    for (let x = 0; x <= 1024; x += 16) ctx.lineTo(x, y + Math.sin(x * f + i) * amp);
-    ctx.stroke();
-  }
-  return c;
+/** The shelf's matte charcoal and its hand-drawn marker line (the doodles' off-white). */
+export const SHELF_COLOUR = "#171717";
+export const DOODLE = "#ede7dc";
+
+/** A seamless wobble along a strip of `w` texels: a few integer-frequency sines. */
+function wobble(seed: number, w: number) {
+  const ph = [seed * 1.7, seed * 2.9, seed * 4.3, seed * 5.1];
+  return (x: number, amp: number) => {
+    const t = (x / w) * Math.PI * 2;
+    return amp * (0.55 * Math.sin(3 * t + ph[0]) + 0.28 * Math.sin(7 * t + ph[1]) + 0.12 * Math.sin(13 * t + ph[2]) + 0.05 * Math.sin(29 * t + ph[3]));
+  };
 }
 
-/** Walnut for the bookends: vertical grain over a warm mid-brown. */
-export function walnutTexture() {
-  const { c, ctx } = canvas(128, 512);
-  const g = ctx.createLinearGradient(0, 0, 128, 0);
-  g.addColorStop(0, "#6b4428");
-  g.addColorStop(0.5, "#7c5232");
-  g.addColorStop(1, "#673f25");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 128, 512);
-  let seed = 23;
-  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let i = 0; i < 90; i++) {
-    const x = rnd() * 128;
-    const a = 0.04 + rnd() * 0.12;
-    ctx.strokeStyle = rnd() > 0.35 ? `rgba(40,22,10,${a})` : `rgba(255,214,160,${a * 0.5})`;
-    ctx.lineWidth = 0.6 + rnd() * 1.8;
-    ctx.beginPath();
-    const amp = 0.6 + rnd() * 2.4;
-    const f = 0.006 + rnd() * 0.02;
-    for (let y = 0; y <= 512; y += 16) ctx.lineTo(x + Math.sin(y * f + i) * amp, y);
-    ctx.stroke();
-  }
+/**
+ * The plank's front lip (tiles along it, 1024 units per repeat; v runs top -> bottom): matte
+ * charcoal, traced along its top and bottom edges with a slightly wobbly marker line about
+ * `px` CSS px thick, `k` CSS px per unit on screen (so the line is as thick on a phone).
+ */
+export function lipTexture(lip: number, k: number, px = 1.5) {
+  const W = 2048;
+  const H = 128;
+  const { c, ctx } = canvas(W, H);
+  ctx.fillStyle = SHELF_COLOUR;
+  ctx.fillRect(0, 0, W, H);
+  const perUnit = H / lip;
+  const thick = Math.max(2.2, (px / Math.max(0.3, k)) * perUnit);
+  ctx.strokeStyle = DOODLE;
+  ctx.lineCap = "round";
+  const line = (y: number, seed: number) => {
+    const wb = wobble(seed, W);
+    const th = wobble(seed + 3, W);
+    // drawn in short pieces, the width breathing a little like a marker's
+    for (let x = 0; x < W; x += 16) {
+      ctx.lineWidth = thick * (1 + th(x, 0.22));
+      ctx.beginPath();
+      ctx.moveTo(x - 1, y + wb(x - 1, perUnit * 0.4));
+      for (let xx = x + 4; xx <= x + 17; xx += 4) ctx.lineTo(xx, y + wb(xx, perUnit * 0.4));
+      ctx.stroke();
+    }
+  };
+  line(thick * 0.5 + perUnit * 0.6, 1);
+  line(H - thick * 0.5 - perUnit * 0.7, 2);
   return c;
 }
 
@@ -873,7 +900,7 @@ export function blobTexture() {
   return c;
 }
 
-/** Vertical fade for the plank's shadow on the wall below (alpha map, top = dark). */
+/** Vertical fade for the books' soft shadow along the base (alpha map, top = dark). */
 export function wallShadowTexture() {
   const { c, ctx } = canvas(4, 128);
   const g = ctx.createLinearGradient(0, 0, 0, 128);

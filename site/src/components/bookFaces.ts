@@ -16,9 +16,22 @@ export const TURN = { angle: -98, lift: -16, pull: 28, ms: 550 } as const;
 /** Clear space kept around a turned book when its neighbours part. */
 export const PART_MARGIN = 12;
 
+/**
+ * How far a book leans on the shelf (degrees): every book stands upright, the ones the data
+ * gives a lean to only a hint of it (at most ~0.6°), as books packed tight on a shelf do.
+ */
+export function leanOf(e: Essay): number {
+  return Math.max(-0.6, Math.min(0.6, (e.lean || 0) * 0.1));
+}
+/** How far a book stands forward of / back from the row (units): a touch, so the spines line up. */
+export function depthOf(e: Essay): number {
+  return (e.depth || 0) * 0.35;
+}
+
 /** Extra left margin so a leaning book rests clear of its neighbour. */
 export function leanMarginOf(e: Essay): number {
-  return e.lean ? Math.ceil(e.height * Math.sin((Math.abs(e.lean) * Math.PI) / 180) * 0.85) : 0;
+  const lean = leanOf(e);
+  return lean ? Math.ceil(e.height * Math.sin((Math.abs(lean) * Math.PI) / 180) * 0.85) : 0;
 }
 
 /**
@@ -42,7 +55,7 @@ export function turnedFootprint(e: Essay): { left: number; right: number } {
     [0, -COVER_W],
   ] as const) {
     const x = px - w / 2; // transform-origin is the spine's centre
-    const z = pz + e.depth;
+    const z = pz + depthOf(e);
     const x1 = x * cos + z * sin;
     const z1 = -x * sin + z * cos + TURN.pull;
     const X = w / 2 + x1 * (PERSPECTIVE / (PERSPECTIVE - z1));

@@ -58,13 +58,8 @@ export default function App() {
     setReadOnly(on);
   };
   return (
-    <div className="grain relative flex min-h-dvh flex-col overflow-clip bg-background text-foreground">
-      {/* the room: lit plaster wall, soft vignette, slow dappled window light */}
-      <div aria-hidden="true" className="room-wall pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="room-light absolute inset-0" />
-        <div className="room-dapple animate-drift absolute -inset-[20%]" />
-        <div className="room-vignette absolute inset-0" />
-      </div>
+    // the page is flat black top to bottom: no wall, no light, no grain (the shelf's canvas shows it through)
+    <div className="relative flex min-h-dvh flex-col overflow-clip bg-background text-foreground">
 
       {/* AevyTV social links, top-right: Instagram above YouTube */}
       <nav
@@ -78,7 +73,7 @@ export default function App() {
           rel="noopener noreferrer"
           aria-label="AevyTV on Instagram"
           title="AevyTV on Instagram"
-          className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <rect x="2.5" y="2.5" width="19" height="19" rx="5" />
@@ -92,7 +87,7 @@ export default function App() {
           rel="noopener noreferrer"
           aria-label="AevyTV on YouTube"
           title="AevyTV on YouTube"
-          className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17" />
@@ -101,15 +96,10 @@ export default function App() {
         </a>
       </nav>
 
-      <header className="mx-auto w-full max-w-5xl px-4 pt-10 sm:px-8 sm:pt-16">
-        <p className="animate-rise font-mono text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-          A personal archive
-        </p>
-        <div className="mt-4 sm:mt-5">
-          <TypedTitle />
-        </div>
+      <header className="mx-auto w-full max-w-5xl px-4 pt-10 sm:px-8 sm:pt-12">
+        <TypedTitle />
         <p
-          className="animate-rise mt-4 font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground"
+          className="animate-rise mt-2.5 font-sans text-[16px] uppercase tracking-[0.24em] text-muted-foreground sm:mt-2"
           style={{ animationDelay: "240ms" }}
         >
           {essays.length} reads
@@ -124,8 +114,8 @@ export default function App() {
                 title="Show only the reads you've opened"
                 onClick={toggleRead}
                 // (the same box in both states: a change of margins here would shift the whole page below)
-                className={`-mx-2 rounded-full px-2 py-0.5 font-mono uppercase tracking-[0.24em] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
-                  readOnly ? "bg-foreground text-background" : "text-primary hover:bg-foreground/5"
+                className={`-mx-2 rounded-full px-2 py-0.5 font-sans uppercase tracking-[0.24em] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+                  readOnly ? "bg-cream text-background" : "text-primary hover:bg-foreground/5"
                 }`}
               >
                 {readCount} read
@@ -136,7 +126,7 @@ export default function App() {
         <p className="sr-only" aria-live="polite">
           {readNote}
         </p>
-        <div className="animate-rise mt-7 sm:mt-9" style={{ animationDelay: "380ms" }}>
+        <div className="animate-rise mt-5 sm:mt-7" style={{ animationDelay: "380ms" }}>
           <LibraryFilter essays={essays} onChange={onFilter} />
         </div>
       </header>
@@ -154,7 +144,7 @@ export default function App() {
         />
       </main>
 
-      <footer className="px-4 pb-6 pt-6 text-center font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
+      <footer className="px-4 pb-6 pt-6 text-center font-sans text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
         An interesting website by <span className="normal-case">AevyTV</span>
       </footer>
     </div>

@@ -1,7 +1,7 @@
 import { essays as ALL_ESSAYS, type Essay } from "../data/essays";
-import { PART_MARGIN, TURN } from "../components/bookFaces";
+import { PART_MARGIN, TURN, depthOf, leanOf } from "../components/bookFaces";
 import { Drum, CAM_D } from "./curve";
-import { BOOK_DEPTH, LIP, PLANK_FRONT, Row, type RowItem } from "./row";
+import { BOOK_DEPTH, LIP, MARKER_D, PLANK_FRONT, Row, type RowItem } from "./row";
 
 /**
  * The shelf's motion + interaction engine (renderer-agnostic, no DOM per book).
@@ -51,6 +51,11 @@ export type ScreenRect = { left: number; top: number; width: number; height: num
 
 /** Drift speed in SCREEN px/s (converted to row units by the view scale). */
 const DRIFT_PX_PER_S = 27;
+/**
+ * A row loops only if one copy is wider than the visible drum plus this much each side (row
+ * units), so a book (and the copy of it the loop brings round) are never on screen at once.
+ */
+const LOOP_MARGIN = 90;
 const RESUME_AFTER_MS = 2500;
 const RESUME_AFTER_LEAVE_MS = 700;
 const LEAVE_GRACE_MS = 90;
@@ -65,7 +70,9 @@ const HOVER_LIFT_PX = 18;
 const HOVER_SLIDE = 0.38 * BOOK_DEPTH;
 const HOVER_MS = 180;
 const HOVER_BACK_MS = 120;
-const DRAG_THRESHOLD = 5;
+const DRAG_THRESHOLD = 6;
+/** A mouse / pen press held this long without moving turns into a drag (it won't open a book). */
+const HOLD_MS = 200;
 const TURN_RAD = (TURN.angle * Math.PI) / 180;
 const FLING_TAU = 0.35; // s, momentum decay
 const WHEEL_TAU = 0.11; // s, wheel smoothing
@@ -77,12 +84,12 @@ const CLICK_TOP_TOLERANCE = 30;
 // Framing: the tallest book (over the whole library, so filters don't rescale
 // the shelf) fills the stage between ~11% headroom (room for the hover lift
 // and the turned cover) and the plank + lip, which sit on a thin band at the
-// bottom. The eye is a little above the tallest book, so book tops and the
-// plank's front strip show.
+// bottom. The eye is just above the tallest book, so the row reads front-on: only a sliver
+// of the shorter books' tops shows, and the plank's front strip.
 const MAX_BOOK_H = Math.max(...ALL_ESSAYS.map((e) => e.height));
 const HEADROOM = 0.11;
 const BOTTOM_BAND = 0.03;
-const EYE_ABOVE = 70;
+const EYE_ABOVE = 24;
 /** A turned cover keeps clear of the stage's soft side fades (7% each side, styles.css) plus this (px). */
 const FIT_MARGIN = 10;
 const SIDE_FADE = 0.07;
@@ -224,14 +231,15 @@ export class ShelfEngine3D {
   private wheelOwned = false;
   private wheelPrevAt = -1e9;
   private wheelPrevOwned = false;
-  private drag: { x: number; y: number; pos: number; moved: boolean; id: number; type: string; samples: [number, number][] } | null = null;
+  private drag: { x: number; y: number; pos: number; moved: boolean; id: number; type: string; samples: [number, number][]; hold: number } | null = null;
   private suppressClick = false;
   private lastPointerType = "mouse";
   private lastClientX = 0;
   private lastClientY = 0;
   private leaveTimer = 0;
   private resumeTimer = 0;
-  private stage: HTMLElement | null = null;
+  /** the stage element the shelf is attached to (read by the caption, never set outside) */
+  stage: HTMLElement | null = null;
 
   /** Wired by the page. */
   onActivate: (v: number) => void = () => {};
@@ -241,6 +249,15 @@ export class ShelfEngine3D {
   onResize: () => void = () => {};
   /** The DOM focus ring (positioned on the keyboard-highlighted book). */
   focusRing: HTMLElement | null = null;
+  /**
+   * DOM doodles kept on the 3D shelf (decorative, positioned here so they never drift from it):
+   * the two brackets under the plank (left, right) and the little arrow under the hovered book.
+   */
+  brackets: HTMLElement[] = [];
+  hoverMark: HTMLElement | null = null;
+  /** The hovered book's centre (stage px; NaN when none), and who wants to know when it moves (the caption). */
+  hoverX = NaN;
+  onHoverMarkMove: () => void = () => {};
 
   stats = { blankFrames: 0, frames: 0 };
 
@@ -250,6 +267,7 @@ export class ShelfEngine3D {
   constructor(essays: Essay[]) {
     this.row = new Row(essays);
     this.drum = new Drum(720);
+    this.decideLoop(this.row);
     this.pos = this.startPos();
   }
 
@@ -270,6 +288,16 @@ export class ShelfEngine3D {
     this.drum.build(w / 2 / v.k);
     this.turnCentres.clear();
     this.partDirty = true;
+    // a narrower or wider view can turn the loop on or off: a row that stops looping is centred
+    const was = this.row.looping;
+    this.decideLoop(this.row);
+    if (was !== this.row.looping) {
+      this.glide = null;
+      this.flingV = 0;
+      this.wheelTarget = null;
+      this.heldV.clear();
+      this.pos = this.startPos();
+    }
     this.setPos(this.pos);
     this.onResize();
     this.requestFrame();
@@ -279,9 +307,28 @@ export class ShelfEngine3D {
   setEssays(essays: Essay[]) {
     return this.setRow(new Row(essays));
   }
+  /** The shortest row (row units) that may loop at this view's width. */
+  loopMin() {
+    return 2 * (this.drum.sMax + LOOP_MARGIN);
+  }
+  /** Loop the row only if no book could then be on screen twice (a short row shows each book once). */
+  decideLoop(row: Row) {
+    row.looping = row.K > 0 && row.S >= this.loopMin();
+    if (row === this.row) this.reportLoop(row.looping);
+  }
+  /** Told when the shelf starts or stops looping (the page shows Pause only while it can drift). */
+  onLoopChange: (looping: boolean) => void = () => {};
+  private loopReported: boolean | null = null;
+  private reportLoop(looping: boolean) {
+    if (looping === this.loopReported) return;
+    this.loopReported = looping;
+    this.onLoopChange(looping);
+  }
   setRow(row: Row) {
     const keepSel = this.selected !== null ? this.idOf(this.selected) : null;
+    this.decideLoop(row);
     this.row = row;
+    this.reportLoop(row.looping);
     this.turnCentres.clear();
     this.morphFrom.clear();
     this.leavingMarkers = [];
@@ -440,7 +487,7 @@ export class ShelfEngine3D {
     const cl = Math.cos(P.lean);
     const sl = Math.sin(P.lean);
     const h = it.h;
-    const D = it.kind === "book" ? BOOK_DEPTH : 40;
+    const D = it.kind === "book" ? BOOK_DEPTH : MARKER_D;
     // centre = P + R·(0, h/2, -D/2), R columns r1 = (-c·sl, cl, sn·sl), r2 = (sn, 0, c)
     p.x = P.x + -c * sl * (h / 2) - sn * (D / 2);
     p.y = P.y + cl * (h / 2);
@@ -507,7 +554,7 @@ export class ShelfEngine3D {
       if (!oldRow.isBook(o.v) || row.kOfId(id) === undefined || returning.includes(id)) continue;
       if (!anchor || Math.abs(o.s) < Math.abs(anchor.s)) anchor = { id, s: o.s };
     }
-    this.setRow(row);
+    this.setRow(row); // (decides whether it loops)
     if (anchor && row.looping) this.setPos(row.center[row.kOfId(anchor.id)!] - anchor.s);
     this.morphFrom.clear();
     this.heldV.clear();
@@ -773,7 +820,24 @@ export class ShelfEngine3D {
     this.hoverSource = v === null ? null : source;
     this.setLiftTargets();
     this.emitHover();
+    this.updateCursor();
     this.requestFrame();
+  }
+  /**
+   * The cursor over the stage: a pointing hand over a book (a click opens it), the closed hand
+   * while a press holds or drags the shelf, the arrow elsewhere.
+   */
+  private cursorNow = "";
+  private updateCursor() {
+    const st = this.stage;
+    if (!st) return;
+    // (the hand only where a click would open: on the hovered book itself, not the band above it)
+    const onBook =
+      this.hovered !== null && this.hoverSource === "pointer" && this.isOnItem(this.hovered, this.lastClientY - st.getBoundingClientRect().top);
+    const c = this.dragging ? "grabbing" : onBook ? "pointer" : "";
+    if (c === this.cursorNow) return;
+    this.cursorNow = c;
+    st.style.cursor = c;
   }
   select(v: number | null) {
     if (v === this.selected) return;
@@ -790,8 +854,8 @@ export class ShelfEngine3D {
     this.drum.at(s, tmp);
     const p = it.kind === "book" ? (turn ?? this.turnOf(v)) : 0;
     const l = it.kind === "book" ? (lift ?? this.liftOf(v)) : 0;
-    const depth = it.kind === "book" ? it.essay.depth : 0;
-    const lean = it.kind === "book" ? it.essay.lean : 0;
+    const depth = it.kind === "book" ? depthOf(it.essay) : 0;
+    const lean = it.kind === "book" ? leanOf(it.essay) : 0;
     const nx = Math.sin(tmp.phi);
     const nz = Math.cos(tmp.phi);
     // (the hover: up a little and out of the row along the shelf's normal, no turn)
@@ -856,7 +920,7 @@ export class ShelfEngine3D {
     const pose = this.poseOf(v, s, { x: 0, y: 0, z: 0, rotY: 0, lean: 0, turn: 0 }, undefined, at?.turn);
     const c = Math.cos(pose.rotY);
     const sn = Math.sin(pose.rotY);
-    const D = it.kind === "book" ? BOOK_DEPTH : 40;
+    const D = it.kind === "book" ? BOOK_DEPTH : MARKER_D;
     let minX = Infinity;
     let maxX = -Infinity;
     let minY = Infinity;
@@ -1174,6 +1238,7 @@ export class ShelfEngine3D {
       else active = true;
     }
     this.updateFocusRing();
+    this.updateMarks();
     return active;
   }
 
@@ -1334,6 +1399,63 @@ export class ShelfEngine3D {
     ring.style.transform = `translate3d(${r.left - 6}px, ${r.top - 6}px, 0)`;
   }
 
+  /** Where the brackets hang, as a share of the drum's half-width (just inside the side fades). */
+  static readonly BRACKET_AT = 0.86;
+  /** what the doodles were last placed for (no string keys: this runs every frame) */
+  private marksAt = [0, 0, 0, 0];
+  private hoverMarkX = NaN;
+  /**
+   * The doodles: the brackets hang under the plank's front edge near each end (the plank never
+   * moves, so they're set again only when the view changes), sized with the shelf; the hover
+   * arrow points up at the hovered book from under the plank, and follows it.
+   */
+  private updateMarks() {
+    const v = this.view;
+    if (this.brackets.length && v.w > 0) {
+      const m = this.marksAt;
+      if (m[0] !== v.w || m[1] !== v.h || m[2] !== v.k || m[3] !== v.horizonY) {
+        m[0] = v.w;
+        m[1] = v.h;
+        m[2] = v.k;
+        m[3] = v.horizonY;
+        const at = { x: 0, z: 0, phi: 0 };
+        const pt = { x: 0, y: 0 };
+        this.brackets.forEach((el, i) => {
+          this.drum.at((i ? 1 : -1) * ShelfEngine3D.BRACKET_AT * this.drum.sMax, at);
+          this.project(at.x + Math.sin(at.phi) * PLANK_FRONT, -LIP, at.z + Math.cos(at.phi) * PLANK_FRONT, pt);
+          const size = Math.max(12, Math.min(26, 20 * v.k));
+          el.style.width = el.style.height = `${size}px`;
+          el.style.transform = `translate3d(${pt.x - (i ? size * 0.7 : size * 0.3)}px, ${pt.y - 1}px, 0)`;
+          el.style.opacity = "1";
+        });
+      }
+    }
+    const mark = this.hoverMark;
+    if (!mark) return;
+    const h = this.hovered !== null && this.selected !== this.hovered ? this.hovered : null;
+    if (h === null) {
+      if (!Number.isNaN(this.hoverMarkX)) {
+        this.hoverMarkX = this.hoverX = NaN;
+        mark.style.opacity = "0";
+      }
+      return;
+    }
+    const r = this.rectOf(h);
+    // (whole pixels: the lift tween moves it by fractions, which no one would see)
+    const x = r ? Math.round(r.left + r.width / 2) : NaN;
+    if (x === this.hoverMarkX || (Number.isNaN(x) && Number.isNaN(this.hoverMarkX))) return;
+    this.hoverMarkX = this.hoverX = x;
+    this.onHoverMarkMove();
+    if (!r) {
+      mark.style.opacity = "0";
+      return;
+    }
+    const pt = { x: 0, y: 0 };
+    this.project(0, -LIP, PLANK_FRONT, pt);
+    mark.style.opacity = "1";
+    mark.style.transform = `translate3d(${x - 8}px, ${Math.round(pt.y + 3)}px, 0)`;
+  }
+
   // ---------------------------------------------------------------- events
 
   private onPointerEnter = (e: PointerEvent) => {
@@ -1354,17 +1476,7 @@ export class ShelfEngine3D {
           return;
         }
       }
-      if (!d.moved && Math.abs(dx) > DRAG_THRESHOLD) {
-        d.moved = true;
-        this.dragging = true;
-        this.stopMotion();
-        this.setHover(null, null);
-        try {
-          this.stage?.setPointerCapture(d.id);
-        } catch {
-          /* gone */
-        }
-      }
+      if (!d.moved && Math.abs(dx) > DRAG_THRESHOLD) this.startDrag(d);
       if (d.moved) {
         this.markInteraction();
         this.setPos(d.pos - dx / this.view.k);
@@ -1381,6 +1493,7 @@ export class ShelfEngine3D {
     this.lastClientY = e.clientY;
     if (this.glide) return;
     this.rehover();
+    this.updateCursor();
   };
   private onPointerLeave = (e: PointerEvent) => {
     if (e.pointerType === "touch") return;
@@ -1403,13 +1516,32 @@ export class ShelfEngine3D {
       if (a instanceof HTMLElement && a !== document.body && !this.stage?.contains(a)) a.blur();
     }
     this.markInteraction();
-    this.drag = { x: e.clientX, y: e.clientY, pos: this.pos, moved: false, id: e.pointerId, type: e.pointerType, samples: [[performance.now(), e.clientX]] };
+    const d = { x: e.clientX, y: e.clientY, pos: this.pos, moved: false, id: e.pointerId, type: e.pointerType, samples: [[performance.now(), e.clientX]] as [number, number][], hold: 0 };
+    // (mouse / pen: a press held still turns into a drag; touch keeps tap / second tap / swipe)
+    if (e.pointerType !== "touch") d.hold = window.setTimeout(() => this.drag === d && !d.moved && this.startDrag(d), HOLD_MS);
+    this.drag = d;
   };
+  /** The press becomes a drag: the shelf follows the pointer, and letting go won't open a book. */
+  private startDrag(d: NonNullable<ShelfEngine3D["drag"]>) {
+    window.clearTimeout(d.hold);
+    d.moved = true;
+    this.dragging = true;
+    this.stopMotion();
+    this.setHover(null, null);
+    this.updateCursor();
+    try {
+      this.stage?.setPointerCapture(d.id);
+    } catch {
+      /* gone */
+    }
+  }
   private endDrag(withClick: boolean) {
     const d = this.drag;
     this.drag = null;
+    if (d) window.clearTimeout(d.hold);
     if (!d?.moved) return;
     this.dragging = false;
+    this.updateCursor();
     if (withClick) this.suppressClick = true;
     try {
       this.stage?.releasePointerCapture(d.id);

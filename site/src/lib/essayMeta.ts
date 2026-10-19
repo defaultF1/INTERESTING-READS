@@ -43,20 +43,6 @@ export function publisherMark(publication: string): string {
     .toUpperCase();
 }
 
-/** Relative luminance (0–1) of a #rrggbb colour. */
-export function hexLum(hex: string): number {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-}
-
-/** The same dark/light ink rule the data script uses for spines. */
-export function inkOn(hex: string): string {
-  return hexLum(hex) > 0.55 ? "#241f19" : "#faf7f0";
-}
-
 /**
  * Bookmark-ribbon candidates (crimson, gold, teal, ivory, ink). Not theme
  * colours: one is picked per book for contrast against its own palette.

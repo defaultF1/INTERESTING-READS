@@ -3,8 +3,12 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import type { Essay } from "../data/essays";
 import { COVER_W } from "../components/bookFaces";
 import { ribbonColour } from "../lib/essayMeta";
+import { MARKER_COLOUR, bookStyle } from "../lib/bookStyle";
 import {
   AtlasPacker,
+  LABEL_H,
+  LABEL_W,
+  SHELF_COLOUR,
   blobTexture,
   drawCover,
   drawBackCover,
@@ -16,15 +20,14 @@ import {
   fastLoop,
   drawSpine,
   idleLoop,
+  lipTexture,
   uvOf,
-  walnutTexture,
   wallShadowTexture,
-  woodTexture,
   type Slot,
 } from "./bake";
 import type { ShelfEngine3D } from "./engine";
 import { type GroundController, type RenderPart } from "./ground";
-import { BOOK_DEPTH, LIP, MARKER_H, MARKER_W, PLANK_FRONT } from "./row";
+import { BOOK_DEPTH, LIP, MARKER_D, MARKER_H, MARKER_W, PLANK_FRONT } from "./row";
 
 /**
  * The WebGL shelf (three.js, imperative; R3F only hosts the canvas and the
@@ -34,11 +37,11 @@ import { BOOK_DEPTH, LIP, MARKER_H, MARKER_W, PLANK_FRONT } from "./row";
  *   spines — one InstancedMesh per atlas page (per-instance uv rect + material)
  *   covers — the front boards, same scheme (low density; a turned book gets a
  *            hi-res cover of its own)
- *   ribbons, contact blobs, walnut bookends with brass plates
- * The shelf (plank top, chamfer, lip) and the shadows it and the books cast
- * on the page follow the drum curve; there is no wall: the canvas is
- * transparent and the page shows through. One warm key light from the top-left, a soft
- * hemisphere fill and a PMREM'd RoomEnvironment for reflections.
+ *   ribbons, contact blobs, the issue markers (short mustard books, "#N" labels)
+ * The shelf (a slim matte charcoal plank traced with a hand-drawn marker line; its two
+ * doodled brackets are DOM, placed by the engine) and the shadows the books cast follow the drum curve; there
+ * is no wall: the canvas is transparent and the black page shows through. One warm key
+ * light from the top-left, a soft hemisphere fill and a PMREM'd RoomEnvironment.
  */
 
 export type Tier = "high" | "medium" | "low";
@@ -50,7 +53,12 @@ const DESK_SHADOW_OPACITY = 0.35;
 const PANEL_BACK = BOOK_DEPTH + 26; // the (invisible) shadow-catching plane behind the books
 const PANEL_H = 520; // runs up past the top of the stage
 const PLATE_RHO = 3;
-const SLAB_D = 40;
+/** an issue marker's depth: a short book's (a little shallower than the essays) */
+const SLAB_D = MARKER_D;
+/** every jacket is matte paper */
+const MATTE = 0.82;
+/** how much darker a shelved book's side boards are drawn (0..1) */
+const SIDE_SHADE = 0.78;
 /** World units beyond the stage edge (s = sMax) that still count as on screen. */
 const ON_SCREEN_MARGIN = 60;
 /** Above this speed (screen px/s) new cover images wait (a spin or fling doesn't need them). */
@@ -205,6 +213,11 @@ function atlasMaterial(map: THREE.Texture, key: string, opts: { metal?: number; 
       );
     sh.fragmentShader = `varying vec3 vMat;\nvarying float vLx;\nvarying vec3 vTanX;\n${sh.fragmentShader}`
       .replace(
+        "#include <map_fragment>",
+        `#include <map_fragment>
+  diffuseColor.rgb *= 1.0 - vMat.z; // (a book's side boards, seen past its neighbours on the shelf: in shade)`,
+      )
+      .replace(
         "#include <roughnessmap_fragment>",
         `#include <roughnessmap_fragment>
   roughnessFactor = vMat.x > 0.0 ? vMat.x : roughnessFactor;`,
@@ -247,7 +260,7 @@ function bodyMaterial() {
     float board = vSize.w > 0.5 ? 1.8 : 0.6;
     float back = -vPos.z;                            // 0 at the spine .. 1 at the fore-edge
     if (vFace < 1.5) {
-      col *= 1.0 - 0.18 * back;                      // the top darkens toward the back
+      col *= 0.7 - 0.22 * back;                      // the top: toned down, darker toward the back
       float fromSpine = back * vSize.z;
       if (vSize.w > 0.5 && fromSpine < 2.6 && edge >= board) col = mix(vBandC, vec3(0.86, 0.82, 0.72), step(0.5, fract(px * 0.45)));
     } else {
@@ -264,7 +277,7 @@ function bodyMaterial() {
 
 /** Blob shadows with a per-instance strength. */
 function blobMaterial(map: THREE.Texture) {
-  const mat = new THREE.MeshBasicMaterial({ color: 0x1c1208, alphaMap: map, transparent: true, depthWrite: false });
+  const mat = new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: map, transparent: true, depthWrite: false });
   mat.onBeforeCompile = (sh) => {
     sh.vertexShader = `attribute float iAlpha;\nvarying float vAlphaI;\n${sh.vertexShader}`.replace(
       "#include <begin_vertex>",
@@ -343,7 +356,9 @@ export class ShelfScene {
   private slab!: THREE.InstancedMesh;
   private hi: Hi[] = [];
   private room = new THREE.Group();
-  private roomTex: { wood: THREE.Texture; wallShadow: THREE.Texture } | null = null;
+  private roomTex: { lip: THREE.Texture; wallShadow: THREE.Texture } | null = null;
+  /** the on-screen scale the marker lines were drawn for (they're redrawn when it changes much) */
+  private lineK = 0;
   private roomMats: Record<"baseShadow" | "catcher" | "top" | "chamfer" | "lip" | "shadow", THREE.Material> | null = null;
   private roomKey = "";
   private roomMeshes: THREE.Mesh[] = [];
@@ -485,16 +500,17 @@ export class ShelfScene {
       if (this.books.has(e.id)) continue;
       const s = this.spinePack.alloc(e.width * this.spineRho, e.height * this.spineRho);
       const c = this.coverPack.alloc(COVER_W * this.coverRho, e.height * this.coverRho);
-      const rough = e.foil ? 0.3 : e.finish === "gloss" ? 0.3 : e.finish === "cloth" ? 0.86 : 0.7;
-      const round = e.binding === "hardcover" ? 0.5 : e.binding === "mass" ? 0.22 : 0.32;
+      const st = bookStyle(e);
+      // (matte paper jackets; a hardcover's spine is a little rounder)
+      const round = e.binding === "hardcover" ? 0.42 : e.binding === "mass" ? 0.2 : 0.28;
       this.books.set(e.id, {
         e,
         spine: { slot: s, uv: new Float32Array(uvOf(s, this.spinePack.size)), drawn: false },
         cover: { slot: c, uv: new Float32Array(uvOf(c, this.coverPack.size)), drawn: false },
-        col: lin(e.spine),
-        band: lin(e.band ?? e.spine),
-        rib: new THREE.Color(ribbonColour(e.spine, e.band)).convertSRGBToLinear(),
-        mat: new Float32Array([rough, round, 0]),
+        col: lin(st.base),
+        band: lin(st.accent),
+        rib: new THREE.Color(ribbonColour(st.base, st.accent)).convertSRGBToLinear(),
+        mat: new Float32Array([MATTE, round, 0]),
         size: new Float32Array([e.width, e.height, BOOK_DEPTH, e.binding === "hardcover" ? 1 : 0]),
         img: e.cover ? undefined : null,
       });
@@ -502,7 +518,7 @@ export class ShelfScene {
     }
     for (const n of issues) {
       if (this.plates.has(n)) continue;
-      const s = this.platePack.alloc(22 * PLATE_RHO, 30 * PLATE_RHO);
+      const s = this.platePack.alloc(LABEL_W * PLATE_RHO, LABEL_H * PLATE_RHO);
       this.plates.set(n, { slot: s, uv: new Float32Array(uvOf(s, this.platePack.size)), drawn: false });
     }
     const sync = (pack: AtlasPacker, list: THREE.CanvasTexture[]) =>
@@ -878,11 +894,11 @@ export class ShelfScene {
     const cg = coverGeometry();
     this.body = makeInstanced(bodyGeometry(), bodyMaterial(), { iColor: 3, iBand: 3, iSize: 4 });
     this.spineMeshes = this.spineTex.map((t, i) => makeInstanced(sg, atlasMaterial(t, `spine${i}`), { iUv: 4, iMat: 3 }));
-    this.coverMeshes = this.coverTex.map((t, i) => makeInstanced(cg, atlasMaterial(t, `cover${i}`, { rough: 0.62 }), { iUv: 4, iMat: 3 }));
+    this.coverMeshes = this.coverTex.map((t, i) => makeInstanced(cg, atlasMaterial(t, `cover${i}`, { rough: MATTE }), { iUv: 4, iMat: 3 }));
     const bg = backGeometry();
     this.coverGeo = cg;
     this.backGeo = bg;
-    this.backMeshes = this.coverTex.map((t, i) => makeInstanced(bg, atlasMaterial(t, `back${i}`, { rough: 0.66, tint: 0.84 }), { iUv: 4, iMat: 3 }));
+    this.backMeshes = this.coverTex.map((t, i) => makeInstanced(bg, atlasMaterial(t, `back${i}`, { rough: MATTE, tint: 0.84 }), { iUv: 4, iMat: 3 }));
     this.ribbon = new THREE.InstancedMesh(ribbonGeometry(), new THREE.MeshStandardMaterial({ roughness: 0.5, side: THREE.DoubleSide }), CAPACITY);
     this.ribbon.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.ribbon.frustumCulled = false;
@@ -892,15 +908,13 @@ export class ShelfScene {
     blobGeo.rotateX(-Math.PI / 2);
     this.blob = makeInstanced(blobGeo, blobMaterial(new THREE.CanvasTexture(blobTexture())), { iAlpha: 1 });
     this.blob.renderOrder = 1;
-    const grain = new THREE.CanvasTexture(walnutTexture());
-    grain.colorSpace = THREE.SRGBColorSpace;
-    grain.anisotropy = this.aniso;
-    const walnut = new THREE.MeshStandardMaterial({ map: grain, roughness: 0.42, envMapIntensity: 0.7 });
-    this.slab = makeInstanced(boxGeometry(), walnut, {}, 96);
+    // the issue markers: short matte mustard books (their "#N" label is a plate on the spine)
+    const mustard = new THREE.MeshStandardMaterial({ color: new THREE.Color(MARKER_COLOUR), roughness: MATTE, envMapIntensity: 0.55 });
+    this.slab = makeInstanced(boxGeometry(), mustard, {}, 96);
     const plateGeo = new THREE.PlaneGeometry(1, 1);
     plateGeo.translate(0, 0.5, 0);
     this.plateMeshes = this.plateTex.map((t, i) =>
-      makeInstanced(plateGeo, atlasMaterial(t, `plate${i}`, { metal: 0.6, rough: 0.34 }), { iUv: 4, iMat: 3 }, 96),
+      makeInstanced(plateGeo, atlasMaterial(t, `plate${i}`, { rough: MATTE }), { iUv: 4, iMat: 3 }, 96),
     );
     // hi-res covers for turned books: one fixed-size canvas each (no reallocation)
     const W = Math.ceil(COVER_W * this.hiRho);
@@ -1154,30 +1168,42 @@ export class ShelfScene {
   private buildRoom() {
     const drum = this.engine.drum;
     const lim = drum.sLim + 400;
+    const k = this.engine.view.k || 1;
     // the strips follow the drum's width only: a taller canvas (a desk opening) changes
     // nothing here, and the materials are made once (a material rebuilt while
     // the startup compile still waits on it would lose its program under that wait)
-    const roomKey = `${lim}`;
-    if (roomKey === this.roomKey && this.roomMeshes.length) return;
+    const roomKey = `${lim}|${drum.sMax}`;
+    // the marker lines are drawn ~1.5 CSS px thick: redrawn when the on-screen scale moves by 15 %
+    const redraw = !this.lineK || Math.abs(k / this.lineK - 1) > 0.15;
+    if (roomKey === this.roomKey && this.roomMeshes.length && !redraw) return;
     this.roomKey = roomKey;
     for (const m of this.roomMeshes) {
       this.room.remove(m);
       m.geometry.dispose();
     }
     this.roomMeshes = [];
-    if (!this.roomTex) {
-      const tex = (c: HTMLCanvasElement, rep: boolean) => {
-        const t = new THREE.CanvasTexture(c);
-        t.colorSpace = THREE.SRGBColorSpace;
-        t.wrapS = rep ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
-        t.wrapT = THREE.ClampToEdgeWrapping;
-        t.anisotropy = this.aniso;
-        return t;
+    const tex = (c: HTMLCanvasElement, rep: boolean) => {
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = rep ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+      t.wrapT = THREE.ClampToEdgeWrapping;
+      t.anisotropy = this.aniso;
+      return t;
+    };
+    if (!this.roomTex || redraw) {
+      this.lineK = k;
+      const old = this.roomTex;
+      this.roomTex = {
+        lip: tex(lipTexture(LIP, k), true),
+        wallShadow: old?.wallShadow ?? new THREE.CanvasTexture(wallShadowTexture()),
       };
-      const ws = new THREE.CanvasTexture(wallShadowTexture());
-      this.roomTex = { wood: tex(woodTexture(), true), wallShadow: ws };
+      if (this.roomMats) {
+        // (same kind of map: the programs stay)
+        (this.roomMats.lip as THREE.MeshBasicMaterial).map = this.roomTex.lip;
+      }
+      old?.lip.dispose();
     }
-    const { wood, wallShadow } = this.roomTex;
+    const { lip: lipTex, wallShadow } = this.roomTex;
     const N = Math.ceil((2 * lim) / 12);
     const at = { x: 0, z: 0, phi: 0 };
     // a strip along the drum between (offA, yA) and (offB, yB); v = 1 at A
@@ -1206,13 +1232,16 @@ export class ShelfScene {
     };
     if (!this.roomMats) {
       const std = (p: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, ...p });
+      // (every shadow is pure black: a tinted one would lift the black page into a halo)
       this.roomMats = {
-        baseShadow: new THREE.MeshBasicMaterial({ color: 0x2a1a0c, alphaMap: wallShadow, transparent: true, opacity: 0.2, depthWrite: false }),
-        catcher: new THREE.ShadowMaterial({ color: 0x2a1a0c, opacity: 0.2, depthWrite: false }),
-        top: std({ map: wood, color: new THREE.Color("#f2dcc0"), roughness: 0.6, envMapIntensity: 0.35 }),
-        chamfer: std({ map: wood, color: new THREE.Color("#fff3e2"), roughness: 0.45, envMapIntensity: 0.4 }),
-        lip: std({ map: wood, color: new THREE.Color("#c39a72"), roughness: 0.58, envMapIntensity: 0.3 }),
-        shadow: new THREE.MeshBasicMaterial({ color: 0x2a1a0c, alphaMap: wallShadow, transparent: true, opacity: 0.32, depthWrite: false }),
+        baseShadow: new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: wallShadow, transparent: true, opacity: 0.2, depthWrite: false }),
+        catcher: new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.2, depthWrite: false }),
+        // matte charcoal; the front edge catches a little more of the light
+        top: std({ color: new THREE.Color(SHELF_COLOUR), roughness: 0.9, envMapIntensity: 0.25 }),
+        chamfer: std({ color: new THREE.Color("#2a2a2a"), roughness: 0.8, envMapIntensity: 0.3 }),
+        // the front lip: drawn flat, so the marker line stays its own off-white
+        lip: new THREE.MeshBasicMaterial({ map: lipTex, side: THREE.DoubleSide, toneMapped: false }),
+        shadow: new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: wallShadow, transparent: true, opacity: 0.32, depthWrite: false }),
       };
     }
     const M = this.roomMats;
@@ -1224,12 +1253,13 @@ export class ShelfScene {
     catcher.receiveShadow = true;
     const top = new THREE.Mesh(strip(-PANEL_BACK, 0, PLANK_FRONT - 2, 0, 1024), M.top);
     const chamfer = new THREE.Mesh(strip(PLANK_FRONT - 2, 0, PLANK_FRONT, -2, 1024), M.chamfer);
-    const lip = new THREE.Mesh(strip(PLANK_FRONT, -2, PLANK_FRONT, -LIP, 1024), M.lip);
+    // (the lip's texture spans its full height: the marker line traces its top and bottom edges)
+    const lip = new THREE.Mesh(strip(PLANK_FRONT, 0, PLANK_FRONT, -LIP, 1024), M.lip);
     const shadow = new THREE.Mesh(strip(PLANK_FRONT - 30, -LIP, PLANK_FRONT - 30, -LIP - 56, 512), M.shadow);
     shadow.position.x = 6; // falling away from the top-left light
     top.receiveShadow = true;
     this.roomMeshes = [catcher, baseShadow, top, chamfer, lip, shadow];
-    this.room.add(catcher, baseShadow, top, chamfer, lip, shadow);
+    this.room.add(...this.roomMeshes);
   }
 
   /** Fit the key light's shadow camera tightly around the shelf (light-space bounds). */
@@ -1437,7 +1467,7 @@ export class ShelfScene {
       a[o + 14] = tz;
       a[o + 15] = 1;
     };
-    const putAtlas = (m: THREE.InstancedMesh, i: number, uv: Float32Array, r: number, round: number) => {
+    const putAtlas = (m: THREE.InstancedMesh, i: number, uv: Float32Array, r: number, round: number, shade = 0) => {
       const u = m.geometry.getAttribute("iUv").array as Float32Array;
       u[i * 4] = uv[0];
       u[i * 4 + 1] = uv[1];
@@ -1446,7 +1476,7 @@ export class ShelfScene {
       const t = m.geometry.getAttribute("iMat").array as Float32Array;
       t[i * 3] = r;
       t[i * 3 + 1] = round;
-      t[i * 3 + 2] = 0;
+      t[i * 3 + 2] = shade;
     };
 
     /** One book's instances (body, spine, cover or its hi-res cover, ribbon) at origin (ox, oy, oz) with r0..r2. */
@@ -1471,6 +1501,10 @@ export class ShelfScene {
         putAtlas(m, i, b.spine.uv, b.mat[0], b.mat[1]);
       }
 
+      // the boards of a book standing on the shelf are its sides, glimpsed past shorter neighbours
+      // and at the drum's ends: in shade, so the row reads by its spines (a book off the shelf, or
+      // turned, shows them fully lit)
+      const side = force || turn > 0.001 ? 0 : SIDE_SHADE;
       // front board: the hi-res cover once painted, else the atlas cover
       let hiSlot: Hi | null = null;
       if (turn > 0.001) for (const hs of this.hi) if (hs.id === e.id && hs.painted === e.id) hiSlot = hs;
@@ -1487,14 +1521,14 @@ export class ShelfScene {
           const m = this.coverMeshes[b.cover.slot.page];
           const i = nCover[b.cover.slot.page]++;
           put(m.instanceMatrix.array as Float32Array, i, w, h, D, ox, oy, oz);
-          putAtlas(m, i, b.cover.uv, 0.62, 0);
+          putAtlas(m, i, b.cover.uv, MATTE, 0, side);
         }
       }
       if (b.cover.drawn) {
         const m = this.backMeshes[b.cover.slot.page];
         const i = nBack[b.cover.slot.page]++;
         put(m.instanceMatrix.array as Float32Array, i, w, h, D, ox, oy, oz);
-        putAtlas(m, i, b.cover.uv, 0.66, 0);
+        putAtlas(m, i, b.cover.uv, MATTE, 0, side);
       }
       if ((!b.spine.drawn || !b.cover.drawn) && !deferred) blank++;
 
@@ -1582,9 +1616,9 @@ export class ShelfScene {
           }
           const m = this.plateMeshes[f.slot.page];
           const i = nPlate[f.slot.page]++;
-          const oy = MARKER_H - 18 - 30;
-          put(m.instanceMatrix.array as Float32Array, i, 22, 30, 1, P.x + r1x * oy + r2x * 0.6, P.y + r1y * oy, P.z + r1z * oy + r2z * 0.6);
-          putAtlas(m, i, f.uv, 0.34, 0);
+          const oy = MARKER_H - LABEL_H;
+          put(m.instanceMatrix.array as Float32Array, i, LABEL_W, LABEL_H, 1, P.x + r1x * oy + r2x * 0.4, P.y + r1y * oy, P.z + r1z * oy + r2z * 0.4);
+          putAtlas(m, i, f.uv, MATTE, 0);
         }
         this.putBlob(nBlob++, P.x, P.z, r2x, r2z, MARKER_W, SLAB_D, 0.42, 0);
         return;
@@ -1620,9 +1654,9 @@ export class ShelfScene {
       if (f?.drawn) {
         const pm = this.plateMeshes[f.slot.page];
         const i = nPlate[f.slot.page]++;
-        const oy = (MARKER_H - 18 - 30) * g;
-        put(pm.instanceMatrix.array as Float32Array, i, 22, 30, 1, this.T.x + r2x * 0.6, oy, this.T.z + r2z * 0.6);
-        putAtlas(pm, i, f.uv, 0.34, 0);
+        const oy = (MARKER_H - LABEL_H) * g;
+        put(pm.instanceMatrix.array as Float32Array, i, LABEL_W, LABEL_H * g, 1, this.T.x + r2x * 0.4, oy, this.T.z + r2z * 0.4);
+        putAtlas(pm, i, f.uv, MATTE, 0);
       }
     }
 
@@ -1687,7 +1721,7 @@ export class ShelfScene {
               const m = this.backMeshes[b.cover.slot.page];
               const i = nBack[b.cover.slot.page]++;
               put(m.instanceMatrix.array as Float32Array, i, w, h, D, _o.x, _o.y, _o.z);
-              putAtlas(m, i, b.cover.uv, 0.66, 0);
+              putAtlas(m, i, b.cover.uv, MATTE, 0);
             }
             {
               // the page under the lifted page group: body text
@@ -1725,7 +1759,7 @@ export class ShelfScene {
               const m = this.coverMeshes[b.cover.slot.page];
               const i = nCover[b.cover.slot.page]++;
               put(m.instanceMatrix.array as Float32Array, i, w, h, D, _o.x, _o.y, _o.z);
-              putAtlas(m, i, b.cover.uv, 0.62, 0);
+              putAtlas(m, i, b.cover.uv, MATTE, 0);
             }
             {
               // the inside of the front cover: the title page
@@ -1794,7 +1828,7 @@ export class ShelfScene {
           uHalf: { value: new THREE.Vector2(0.5, 0.5) },
           uFeather: { value: DESK_SHADOW_FEATHER },
           uOpacity: { value: DESK_SHADOW_OPACITY },
-          uColor: { value: new THREE.Color(0x2e1d10) },
+          uColor: { value: new THREE.Color(0x000000) }, // black: on the charcoal table a tinted shadow would glow
         },
         vertexShader: `uniform vec2 uSize; varying vec2 vPos;
           void main() { vPos = position.xy * uSize; gl_Position = projectionMatrix * modelViewMatrix * vec4(vPos, 0.0, 1.0); }`,

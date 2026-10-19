@@ -2,52 +2,47 @@
 @source "../src";
 
 /* ========================================================================
-   Tokens. Change the palette here (warm paper tones in oklch); components
-   only reference these through Tailwind utilities or var(--…).
+   Tokens. Change the palette here; components only reference these through
+   Tailwind utilities or var(--…). The page is flat black (#0B0B0B) top to
+   bottom: the shelf's transparent canvas shows it through.
 
-   ONE LIGHT: a soft warm light from the TOP-LEFT. Every highlight, shade and
+   ONE LIGHT: a warm light from the TOP-LEFT. Every highlight, shade and
    shadow below agrees with it: highlights on top/left edges, shade on
    bottom/right, shadows falling down-right.
    ======================================================================== */
 :root {
-  --background: oklch(0.895 0.004 95);
-  --foreground: oklch(0.28 0.008 80);
-  --card: oklch(0.94 0.006 90);
-  --card-foreground: oklch(0.28 0.008 80);
-  --muted: oklch(0.86 0.007 88);
-  --muted-foreground: oklch(0.44 0.012 75); /* ≈5.7:1 on the wall: AA */
-  --primary: oklch(0.5 0.085 52);
-  --primary-foreground: oklch(0.97 0.012 85);
-  --accent: oklch(0.84 0.028 72);
-  --accent-foreground: oklch(0.32 0.03 55);
-  --border: oklch(0.79 0.01 85);
-  --ring: oklch(0.45 0.09 50); /* opaque focus ring: ≈5:1 on the wall (WCAG 1.4.11); the shelf ring adds a light inner edge */
-  --glow: oklch(0.965 0.035 82);
-  --haze: oklch(0.87 0.03 65);
+  color-scheme: dark;
+  --background: #0b0b0b;
+  --foreground: #f3efe7;
+  --card: #151515;
+  --card-foreground: #f3efe7;
+  --muted: #1c1c1c;
+  --muted-foreground: #a39e95; /* ≈7.4:1 on the page: AA */
+  --primary: #e9b949; /* the "{k} read" toggle */
+  --primary-foreground: #0b0b0b;
+  --accent: #2a2723;
+  --accent-foreground: #f3efe7;
+  --border: rgb(255 255 255 / 0.24);
+  --ring: #f3efe7; /* focus rings: ≈17:1 on the page */
+  /* the hand-drawn marker lines (doodles, the shelf's outline in src/shelf3d/bake.ts) */
+  --doodle: #ede7dc;
+  /* selected / pressed fills (the active pill, the read toggle, Read →, a spinning Surprise me) */
+  --cream: #eee5d3;
   --paper: oklch(0.935 0.018 88);
   --paper-shade: oklch(0.8 0.022 80);
-  --shadow: oklch(0.22 0.01 70);
-
-  /* the room */
-  --sun: oklch(0.99 0.045 85);
-  --desk: oklch(0.57 0.064 58);
-  --desk-light: oklch(0.66 0.062 66);
-  --desk-dark: oklch(0.45 0.058 52);
-  --card-paper: oklch(0.977 0.008 88);
-  --card-rule: oklch(0.62 0.06 240 / 0.075);
-  --card-margin: oklch(0.6 0.13 25 / 0.32);
-
+  --shadow: #000;
 
   /* motion */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-
-  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.2 0 0 0 0 0.12 0 0 0 0 0.05 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/* The page's faces (declared in src/fonts.css; the books' own are FONT in src/shelf3d/fonts.ts):
+   display = the handwritten headline, sans = the handwritten labels (the page's default),
+   serif = reading text on the desk. Swap a family here and the page follows. */
 @theme inline {
-  --font-display: "Cormorant Garamond", ui-serif, Georgia, "Times New Roman", serif;
-  --font-sans: "Karla", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Space Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display: "Caveat", "Segoe Print", "Bradley Hand", cursive;
+  --font-sans: "Architects Daughter", "Segoe Print", "Bradley Hand", cursive;
+  --font-serif: "Fraunces", ui-serif, Georgia, serif;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -61,8 +56,8 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-border: var(--border);
   --color-ring: var(--ring);
-  --color-glow: var(--glow);
-  --color-haze: var(--haze);
+  --color-doodle: var(--doodle);
+  --color-cream: var(--cream);
   --color-paper: var(--paper);
   --color-paper-shade: var(--paper-shade);
   --color-shadow: var(--shadow);
@@ -81,8 +76,11 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  html {
+    background: var(--background);
+  }
   ::selection {
-    background: oklch(0.5 0.085 52 / 0.22);
+    background: rgb(233 185 73 / 0.32);
   }
   button {
     cursor: pointer;
@@ -90,23 +88,6 @@
   input[type="search"]::-webkit-search-cancel-button {
     -webkit-appearance: none;
     appearance: none;
-  }
-}
-
-/* SVG fractal-noise grain, laid over the page background (under content). */
-@utility grain {
-  position: relative;
-  isolation: isolate;
-  &::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    opacity: 0.35;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.45 0 0 0 0 0.4 0 0 0 1.6 -0.25'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-size: 220px 220px;
   }
 }
 
@@ -121,17 +102,6 @@
 /* ------------------------------------------------------------------------
    Motion: slow and floating. No springs.
    ------------------------------------------------------------------------ */
-@keyframes drift {
-  0% {
-    transform: translate3d(-3%, -2%, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(2.5%, 1.5%, 0) scale(1.07);
-  }
-  100% {
-    transform: translate3d(-1%, 3%, 0) scale(1.02);
-  }
-}
 @keyframes rise {
   from {
     opacity: 0;
@@ -150,9 +120,6 @@
     opacity: 1;
   }
 }
-@utility animate-drift {
-  animation: drift 38s ease-in-out infinite alternate;
-}
 @utility animate-rise {
   animation: rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -160,33 +127,7 @@
   animation: fade-in 700ms ease-out both;
 }
 /* ========================================================================
-   1. The wall: warm plaster lit from the top-left, soft vignette, and a slow
-      patch of window light with a mullion and a few leaf shadows.
-   ======================================================================== */
-.room-light {
-  background:
-    radial-gradient(120% 85% at 6% -8%, color-mix(in oklch, var(--glow) 92%, transparent) 0%, transparent 62%),
-    linear-gradient(180deg, transparent 55%, oklch(0.8 0.012 80 / 0.25) 100%);
-}
-.room-vignette {
-  background: radial-gradient(150% 115% at 22% 8%, transparent 48%, oklch(0.42 0.03 60 / 0.17) 100%);
-}
-.room-dapple {
-  opacity: 0.85;
-  background:
-    radial-gradient(9% 7% at 34% 30%, oklch(0.45 0.03 90 / 0.07), transparent 70%),
-    radial-gradient(6% 9% at 27% 41%, oklch(0.45 0.03 90 / 0.06), transparent 70%),
-    radial-gradient(7% 5% at 41% 45%, oklch(0.45 0.03 90 / 0.05), transparent 70%),
-    linear-gradient(90deg, transparent calc(30% - 22px), oklch(0.45 0.02 70 / 0.045) calc(30% - 5px) calc(30% + 5px), transparent calc(30% + 22px)),
-    linear-gradient(180deg, transparent calc(33% - 22px), oklch(0.45 0.02 70 / 0.045) calc(33% - 5px) calc(33% + 5px), transparent calc(33% + 22px)),
-    radial-gradient(26% 22% at 30% 33%, color-mix(in oklch, var(--sun) 60%, transparent) 0%, transparent 100%);
-  -webkit-mask-image: radial-gradient(28% 24% at 30% 33%, #000 55%, transparent 100%);
-  mask-image: radial-gradient(28% 24% at 30% 33%, #000 55%, transparent 100%);
-  transform-origin: 30% 30%;
-}
-
-/* ========================================================================
-   2. The shelf stage. The shelf itself is WebGL (src/shelf3d) on a
+   1. The shelf stage. The shelf itself is WebGL (src/shelf3d) on a
       transparent canvas: the page is its background.
    ======================================================================== */
 /* The WebGL stage: horizontal drags belong to the shelf, vertical ones scroll the page. */
@@ -227,8 +168,8 @@
   opacity: 0;
   transition-duration: 140ms;
 }
-/* Keyboard focus, projected onto the highlighted 3D book: a light inner and a
-   dark outer ring, so one of them clears 3:1 against any spine or the wall. */
+/* Keyboard focus, projected onto the highlighted 3D book: a dark inner and a
+   light outer ring, so one of them clears 3:1 against any spine or the page. */
 .shelf-focus-ring {
   position: absolute;
   left: 0;
@@ -238,14 +179,53 @@
   opacity: 0;
   border-radius: 5px;
   box-shadow:
-    0 0 0 2px oklch(0.985 0.01 85),
+    0 0 0 2px var(--background),
     0 0 0 4.5px var(--ring);
   transition: opacity 160ms ease-out;
   will-change: transform;
 }
+/* Hand-drawn doodles kept on the 3D shelf (src/components/Doodles.tsx): the brackets under the
+   plank and the arrow under a hovered book are placed by the engine (transform only). */
+.shelf-doodle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform;
+}
+.shelf-hover-mark {
+  transition: opacity 150ms ease-out;
+}
+/* "this one!" round a Surprise's book: drawn in, then it fades as the book pulls out */
+.shelf-spot {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  animation: spot-fade 1400ms ease-out both;
+}
+.doodle-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: doodle-draw 380ms ease-out forwards;
+}
+@keyframes doodle-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes spot-fade {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
 
 /* ========================================================================
-   3. The reading desk (inline detail panel).
+   2. The reading desk (inline detail panel).
    ======================================================================== */
 .detail-fold {
   display: grid;
@@ -257,60 +237,61 @@
 }
 .desk {
   position: relative;
-  border-radius: 22px;
   padding: clamp(18px, 4vw, 40px);
 }
-/* the desk's surface: a separate layer under the shelf's canvas, so the 3D book lies on it */
+/* phones: the table carries the book alone, with room round it as it lies at an angle */
+@media (max-width: 767.98px) {
+  .desk {
+    padding-top: 30px;
+  }
+}
+/* room under the table for its front edge and legs (Sketch.tsx: TABLE_EDGE + TABLE_LEGS) */
+.desk-wrap {
+  padding-bottom: 52px;
+}
+/* the table: a separate layer under the shelf's canvas, so the 3D book lies on it (its
+   height is the tabletop's; the sketched edge and legs hang below it) */
 .desk-surface {
   position: absolute;
-  inset: 0;
-  border-radius: 22px;
-  /* its own layer: the wood rasterises once, not again on every swap of the card */
+  left: 0;
+  right: 0;
+  top: 0;
+  /* its own layer: it rasterises once, not again on every swap of the card */
   will-change: transform;
-  /* even wood (no vignette, no falloff): the only shadow on it is the book's own */
-  background:
-    repeating-linear-gradient(177deg, transparent 0 9px, oklch(0.25 0.05 45 / 0.05) 9px 10px, transparent 10px 23px, oklch(0.95 0.04 80 / 0.035) 23px 25px, transparent 25px 34px),
-    repeating-linear-gradient(175.5deg, transparent 0 41px, oklch(0.25 0.05 45 / 0.06) 41px 43px, transparent 43px 67px),
-    var(--noise),
-    var(--desk);
-  background-size: auto, auto, 160px 160px, auto;
-  box-shadow:
-    inset 0 1px 0 oklch(0.97 0.04 80 / 0.4),
-    inset 0 -2px 0 oklch(0.15 0.03 45 / 0.25),
-    8px 22px 40px -26px oklch(0.2 0.04 45 / 0.55);
 }
-.index-card {
+/* the note card: black, traced in marker (the outline is an SVG sized to it) */
+.note-card {
   position: relative;
-  contain: paint;
-  border-radius: 5px;
-  padding: clamp(20px, 3.4vw, 36px);
+  border-radius: 16px;
+  padding: clamp(20px, 3.2vw, 34px);
+  background: #0e0e0e;
   color: var(--foreground);
-  background:
-    radial-gradient(120% 90% at 0% 0%, oklch(1 0 0 / 0.6), transparent 60%),
-    repeating-linear-gradient(180deg, transparent 0 27px, var(--card-rule) 27px 28px),
-    var(--noise),
-    var(--card-paper);
-  background-size: auto, auto, 160px 160px, auto;
-  background-blend-mode: normal, normal, soft-light, normal;
-  box-shadow:
-    0 1px 1px oklch(0.2 0.03 45 / 0.16),
-    0 2px 4px oklch(0.2 0.03 45 / 0.1),
-    12px 20px 30px -18px oklch(0.15 0.03 45 / 0.55);
-  transform: rotate(0.35deg);
 }
-.index-card .card-kicker {
-  border-bottom: 1.5px solid var(--card-margin);
-  padding-bottom: 10px;
+.doodle-tag {
+  border: 1px solid rgb(243 239 231 / 0.5);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 .panel-btn {
+  border: 1px solid rgb(243 239 231 / 0.55);
   border-radius: 999px;
-  padding: 8px 12px;
-  color: var(--muted-foreground);
-  transition: color 200ms, background-color 200ms;
+  padding: 7px 14px;
+  font-size: 11.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(243 239 231 / 0.92);
+  transition:
+    color 200ms,
+    background-color 200ms,
+    border-color 200ms;
 }
 .panel-btn:hover {
-  background: oklch(0.28 0.008 80 / 0.06);
+  border-color: var(--foreground);
   color: var(--foreground);
+  background: rgb(243 239 231 / 0.06);
 }
 .panel-btn:focus-visible {
   outline: 2px solid var(--ring);
@@ -399,30 +380,24 @@
   }
 }
 
-@media (max-width: 640px) {
-  .room-dapple {
-    display: none;
-  }
-  .index-card {
-    transform: none;
-  }
-}
 
 @media (prefers-reduced-motion: reduce) {
+  /* the doodle just shows, briefly (no drawing in, no fade) */
+  .shelf-spot {
+    animation: none;
+  }
+  .doodle-draw {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
   .shelf-fade,
   .detail-fold {
     transition: none;
-  }
-  .animate-drift {
-    animation: none;
   }
   /* !important so inline delays/durations (header stagger, caption) yield */
   .animate-rise,
   .animate-fade-in {
     animation-duration: 1ms !important;
     animation-delay: 0ms !important;
-  }
-  .room-dapple {
-    animation: none !important;
   }
 }

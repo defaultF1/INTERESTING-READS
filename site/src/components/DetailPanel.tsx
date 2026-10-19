@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type Ref } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type Ref } from "react";
 import type { Essay } from "../data/essays";
 import { FORMAT_LABEL, readLabel, readsLabel } from "../lib/essayMeta";
+import { bookStyle } from "../lib/bookStyle";
 import { COVER_W } from "./bookFaces";
 import { CoverFace } from "./CoverFace";
+import { SketchOutline, SketchTable } from "./Sketch";
 
 type Props = {
   ref?: Ref<HTMLDivElement>;
@@ -40,8 +42,8 @@ function useViewportWidth() {
 
 /**
  * The reading desk: unfolds inline below the shelf (grid-template-rows
- * 0fr → 1fr). The opened book lies on the desk at a slight angle; the
- * details sit on a paper index card.
+ * 0fr → 1fr). The opened book lies on a sketched charcoal table at a slight
+ * angle; the details sit on a black note card traced in marker.
  */
 export function DetailPanel({ ref, essay, read, reduced, onPrev, onNext, onClose, onSetRead, bookInDom, landed }: Props) {
   const open = essay !== null;
@@ -154,136 +156,181 @@ function Desk({ essay, read, mode, reduced, onPrev, onNext, onClose, onSetRead, 
     }
   };
 
+  // The table: under the whole desk from 768px up (the book and the card both lie on it); on
+  // phones, under the book only (the card follows below the table's legs). Its top is measured
+  // from the layout, so the book always lies wholly inside it.
+  const deskRef = useRef<HTMLDivElement>(null);
+  const bookRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLElement>(null);
+  const wide = vw >= 768;
+  // (one measurement for the table and the card's outline: a single extra commit on opening)
+  const [box, setBox] = useState({ w: 0, h: 0, tableH: 0, cardW: 0, cardH: 0 });
+  useLayoutEffect(() => {
+    const d = deskRef.current;
+    const b = bookRef.current;
+    const c = cardRef.current;
+    if (!d || !b || !c) return;
+    const measure = () => {
+      const pad = parseFloat(getComputedStyle(d).paddingTop) || 18;
+      const tableH = wide ? d.offsetHeight : b.getBoundingClientRect().bottom - d.getBoundingClientRect().top + pad;
+      const next = { w: d.offsetWidth, h: d.offsetHeight, tableH: Math.round(tableH), cardW: c.offsetWidth, cardH: c.offsetHeight };
+      setBox((o) => (o.w === next.w && o.h === next.h && o.tableH === next.tableH && o.cardW === next.cardW && o.cardH === next.cardH ? o : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(d);
+    ro.observe(c);
+    return () => ro.disconnect();
+  }, [wide, essay.id]);
+  const tableH = box.tableH;
+
   const markRead = () => onSetRead(essay.id, true);
   // The desk rises in once per opening; Previous/Next only cross-fade the
   // book and the card's text (the controls stay mounted, so focus stays put).
   const enter = reduced ? undefined : { animation: `rise 900ms cubic-bezier(0.16, 1, 0.3, 1) ${PANEL_DELAY_MS}ms both` };
   const swap = mode === "swap" && !reduced ? { animation: "fade-in 360ms ease-out both" } : undefined;
 
-  // The desk's surface lies under the shelf's canvas (the 3D book lands on it) and the
-  // card with the details lies over the canvas: two layers, rising in together.
+  // The table lies under the shelf's canvas (the 3D book lands on it) and the card with the
+  // details lies over the canvas: two layers, rising in together.
   return (
-    <div className="relative">
-      <div aria-hidden="true" className="desk-surface" style={enter} />
-      <div className="desk relative z-10" style={enter}>
-      <div className="relative grid items-center gap-8 md:grid-cols-[auto_minmax(0,1fr)] md:gap-12">
-        <div key={`book-${essay.id}`} className="flex justify-center md:justify-start md:pl-2" style={swap}>
-          {bookInDom ? <LyingBook essay={essay} read={read} u={u} /> : <DeskSlot essay={essay} u={u} landed={landed === essay.id} />}
-        </div>
-
-        <article className="index-card" aria-labelledby="detail-title">
-          <div key={`text-${essay.id}`} style={swap}>
-            <p className="card-kicker font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-              {readsLabel(essay.issues)}
-              {essay.publication ? <span className="text-foreground/75"> · {essay.publication}</span> : null}
-            </p>
-            <h2
-              id="detail-title"
-              className="mt-3 font-display text-[clamp(1.9rem,4vw,2.9rem)] font-normal leading-[1.03] tracking-[-0.01em] text-balance text-foreground"
-              // (a long title sets smaller, so every desk fits the zone the page reserves for it)
-              style={essay.title.length > 100 ? { fontSize: "clamp(1.55rem, 3vw, 2.05rem)" } : essay.title.length > 64 ? { fontSize: "clamp(1.75rem, 3.4vw, 2.4rem)" } : undefined}
-            >
-              {essay.title}
-            </h2>
-            <p className="mt-2.5 text-[17px] text-foreground/85">{essay.author}</p>
-            {essay.description ? (
-              <p className="mt-4 max-w-[52ch] text-[15px] leading-relaxed text-foreground/80">{essay.description}</p>
-            ) : null}
-
-            <ul className="mt-5 flex flex-wrap gap-1.5" aria-label="Format and topics">
-              <li className="rounded-full border border-foreground/20 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                {FORMAT_LABEL[essay.format]}
-              </li>
-              {essay.topics.map((t) => (
-                <li key={t} className="rounded-full bg-accent/70 px-2.5 py-1 text-[12.5px] text-accent-foreground">
-                  {t}
-                </li>
-              ))}
-            </ul>
+    <div className="desk-wrap relative">
+      <div aria-hidden="true" className="desk-surface" style={{ ...enter, height: tableH || "100%" }}>
+        <SketchTable w={box.w} h={tableH} />
+      </div>
+      <div ref={deskRef} className="desk relative z-10" style={enter}>
+        <div className="relative grid items-center gap-x-12 gap-y-20 md:grid-cols-[auto_minmax(0,1fr)]">
+          <div ref={bookRef} key={`book-${essay.id}`} className="flex justify-center md:justify-start md:pl-2" style={swap}>
+            {bookInDom ? <LyingBook essay={essay} read={read} u={u} /> : <DeskSlot essay={essay} u={u} landed={landed === essay.id} />}
           </div>
 
-          {/* Outside the keyed block: these keep focus across Previous / Next. */}
-          <div className="mt-6">
-            {essay.link ? (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-                <a
-                  href={essay.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  data-testid="read-link"
-                  onClick={markRead}
-                  className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-[15px] font-medium tracking-wide text-primary-foreground shadow-[0_10px_24px_-14px_var(--shadow)] transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                >
-                  {readLabel(essay)}
-                  <span className="sr-only"> (opens in a new tab)</span>
-                </a>
-                {essay.linkType === "paid" && essay.freeCopy ? (
+          <article ref={cardRef} className="note-card" aria-labelledby="detail-title">
+            <SketchOutline w={box.cardW} h={box.cardH} r={16} seed={3} className="text-doodle/90" />
+            <div key={`text-${essay.id}`} style={swap}>
+              <p className="card-kicker font-sans text-[11.5px] uppercase tracking-[0.2em] text-foreground/85">
+                {readsLabel(essay.issues)}
+                {essay.publication ? <span> · {essay.publication}</span> : null}
+                <Underline />
+              </p>
+              <h2
+                id="detail-title"
+                className="mt-4 font-display text-[clamp(2.2rem,4.6vw,3.3rem)] font-bold leading-[0.98] text-balance text-foreground"
+                // (a long title sets smaller, so every desk fits the zone the page reserves for it)
+                style={essay.title.length > 100 ? { fontSize: "clamp(1.8rem, 3.4vw, 2.35rem)" } : essay.title.length > 64 ? { fontSize: "clamp(2rem, 3.9vw, 2.75rem)" } : undefined}
+              >
+                {essay.title}
+              </h2>
+              <p className="mt-2 font-sans text-[12px] uppercase tracking-[0.16em] text-muted-foreground">{essay.author}</p>
+              {essay.description ? (
+                <p className="mt-3 max-w-[52ch] font-serif text-[16px] leading-relaxed text-foreground/90">{essay.description}</p>
+              ) : null}
+
+              <ul className="mt-5 flex flex-wrap gap-2" aria-label="Format and topics">
+                <li className="doodle-tag text-muted-foreground">{FORMAT_LABEL[essay.format]}</li>
+                {essay.topics.map((t) => (
+                  <li key={t} className="doodle-tag">
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Outside the keyed block: these keep focus across Previous / Next. */}
+            <div className="mt-6">
+              {essay.link ? (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
                   <a
-                    href={essay.freeCopy}
+                    href={essay.link}
                     target="_blank"
                     rel="noopener noreferrer"
-                    data-testid="free-copy-link"
+                    data-testid="read-link"
                     onClick={markRead}
-                    className="text-[14px] text-foreground/85 underline decoration-foreground/35 underline-offset-4 transition-colors hover:text-foreground hover:decoration-foreground"
+                    className="inline-flex items-center rounded-full bg-cream px-6 py-2.5 font-sans text-[15px] uppercase tracking-[0.14em] text-background transition-colors hover:bg-cream/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   >
-                    Free archived copy
+                    {readLabel(essay)}
                     <span className="sr-only"> (opens in a new tab)</span>
                   </a>
-                ) : null}
-              </div>
-            ) : (
-              <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">No longer available</p>
-            )}
-            <LinkNote essay={essay} />
-          </div>
+                  <PointArrow className="-ml-1 h-[22px] w-[34px] text-doodle/85" />
+                  {essay.linkType === "paid" && essay.freeCopy ? (
+                    <a
+                      href={essay.freeCopy}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="free-copy-link"
+                      onClick={markRead}
+                      className="font-sans text-[12px] uppercase tracking-[0.14em] text-foreground/90 underline decoration-foreground/40 underline-offset-4 transition-colors hover:text-foreground hover:decoration-foreground"
+                    >
+                      Free archived copy
+                      <span className="sr-only"> (opens in a new tab)</span>
+                    </a>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="font-sans text-[11px] uppercase tracking-[0.2em] text-muted-foreground">No longer available</p>
+              )}
+              <LinkNote essay={essay} />
+            </div>
 
-          <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13.5px]">
-            {read ? (
-              <span className="inline-flex items-center gap-1.5 text-foreground">
-                <svg aria-hidden="true" viewBox="0 0 12 16" className="h-3.5 w-2.5 text-primary" fill="currentColor">
-                  <path d="M0 0h12v16l-6-4.2L0 16z" />
-                </svg>
-                You&rsquo;ve read this
+            <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-[11.5px] uppercase tracking-[0.14em]">
+              {read ? (
+                <span className="inline-flex items-center gap-1.5 text-foreground">
+                  <svg aria-hidden="true" viewBox="0 0 12 16" className="h-3.5 w-2.5 text-primary" fill="currentColor">
+                    <path d="M0 0h12v16l-6-4.2L0 16z" />
+                  </svg>
+                  You&rsquo;ve read this
+                </span>
+              ) : null}
+              {/* one persistent action button (focus survives the change); its
+                  label says what it does, the text beside it says the state */}
+              <button
+                type="button"
+                data-testid="read-toggle"
+                data-state={read ? "read" : "unread"}
+                onClick={() => onSetRead(essay.id, !read)}
+                className="rounded uppercase text-muted-foreground underline decoration-foreground/30 underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                {read ? "Mark unread" : "Mark as read"}
+              </button>
+            </div>
+            <div className="mt-6 flex flex-wrap items-center gap-2">
+              <button type="button" data-testid="panel-prev" onClick={onPrev} className="panel-btn">
+                ← Previous
+              </button>
+              <button type="button" data-testid="panel-next" onClick={onNext} className="panel-btn">
+                Next →
+              </button>
+              <button type="button" data-testid="copy-link" onClick={copyLink} className="panel-btn">
+                {copied === "ok" ? "Link copied" : copied === "fail" ? "Couldn't copy" : "Copy link"}
+              </button>
+              <span className="sr-only" aria-live="polite">
+                {copied === "ok" ? "Link copied" : copied === "fail" ? "Couldn't copy the link" : ""}
               </span>
-            ) : null}
-            {/* one persistent action button (focus survives the change); its
-                label says what it does, the text beside it says the state */}
-            <button
-              type="button"
-              data-testid="read-toggle"
-              data-state={read ? "read" : "unread"}
-              onClick={() => onSetRead(essay.id, !read)}
-              className="rounded text-muted-foreground underline decoration-foreground/30 underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-            >
-              {read ? "Mark unread" : "Mark as read"}
-            </button>
-          </div>
-          <div className="mt-7 flex flex-wrap items-center gap-x-1 gap-y-2 border-t border-foreground/10 pt-5 font-mono text-[11px] uppercase tracking-[0.16em]">
-            <button type="button" data-testid="panel-prev" onClick={onPrev} className="panel-btn">
-              ← Previous
-            </button>
-            <button type="button" data-testid="panel-next" onClick={onNext} className="panel-btn">
-              Next →
-            </button>
-            <button type="button" data-testid="copy-link" onClick={copyLink} className="panel-btn">
-              {copied === "ok" ? "Link copied" : copied === "fail" ? "Couldn't copy" : "Copy link"}
-            </button>
-            <span className="sr-only" aria-live="polite">
-              {copied === "ok" ? "Link copied" : copied === "fail" ? "Couldn't copy the link" : ""}
-            </span>
-            <button
-              type="button"
-              data-testid="panel-close"
-              onClick={(e) => onClose(e.detail === 0)}
-              className="ml-auto rounded-full border border-foreground/25 px-4 py-2 text-foreground transition-colors hover:bg-foreground hover:text-background focus-visible:outline-2 focus-visible:outline-ring"
-            >
-              Shelve it
-            </button>
-          </div>
-        </article>
-      </div>
+              <button type="button" data-testid="panel-close" onClick={(e) => onClose(e.detail === 0)} className="panel-btn">
+                Shelve it
+              </button>
+            </div>
+          </article>
+        </div>
       </div>
     </div>
+  );
+}
+
+/** The kicker's hand-drawn underline. */
+function Underline() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 200 8" preserveAspectRatio="none" className="mt-1.5 block h-[7px] w-[min(100%,26rem)] text-doodle/80">
+      <path d="M1.5 4.6C38 3.2 84 2.6 128 3.4c23 .4 46 1.3 68.6 2.4M140 6.3c10-.9 22-1 34-.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+/** A tiny curved arrow pointing back at the Read button. */
+function PointArrow({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 40 26" className={className}>
+      <path d="M37 4C30 4 20 8 6 20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12.9 19.0L6.0 20.0L8.1 13.3" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -309,7 +356,7 @@ function LinkNote({ essay }: { essay: Essay }) {
   else if (essay.linkType === "official_alt") note = "Original unavailable · official re-upload";
   else if (!essay.link) note = "The original was removed and no archived copy exists";
   if (!note) return null;
-  return <p className="mt-3 font-mono text-[10.5px] uppercase tracking-[0.16em] text-muted-foreground">{note}</p>;
+  return <p className="mt-3 font-sans text-[10.5px] uppercase tracking-[0.16em] text-muted-foreground">{note}</p>;
 }
 
 /**
@@ -334,8 +381,8 @@ function LyingBook({ essay, read, u }: { essay: Essay; read: boolean; u: number 
             className="lying-pages"
             style={{
               height: T,
-              borderTop: `${Math.max(1.5, (hard ? 2.2 : 1.2) * u)}px solid ${essay.spine}`,
-              borderBottom: `${Math.max(1.5, (hard ? 2.2 : 1.2) * u)}px solid ${essay.spine}`,
+              borderTop: `${Math.max(1.5, (hard ? 2.2 : 1.2) * u)}px solid ${bookStyle(essay).base}`,
+              borderBottom: `${Math.max(1.5, (hard ? 2.2 : 1.2) * u)}px solid ${bookStyle(essay).base}`,
               paddingInline: hard ? 3 * u : 0,
             }}
           />

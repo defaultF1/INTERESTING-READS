@@ -4,6 +4,7 @@ import { type DeskRect, type GroundHook, type LeaveInfo, type ShelfEngine3D } fr
 import type { FloorSpec, HingeSpec, PartSpec } from "./physics";
 import type { SimChunk, SimJob, SimResult } from "./simWorker";
 import { BOOK_DEPTH, LIP, PLANK_FRONT, Row } from "./row";
+import { depthOf, leanOf } from "../components/bookFaces";
 
 /**
  * The books off the shelf (and the one on the desk), seen from the same eye-level view. A
@@ -918,9 +919,9 @@ export class GroundController implements GroundHook {
       this.items.set(L.id, it);
       // standing in its shelf place (row space: a flat shelf)
       const L2 = layout(it.e);
-      const lean = (-(it.e.lean || 0) * Math.PI) / 180;
+      const lean = (-leanOf(it.e) * Math.PI) / 180;
       const q = new THREE.Quaternion().setFromAxisAngle(Z_AXIS, lean);
-      const centre = new THREE.Vector3(0, L2.h / 2, -L2.D / 2).applyQuaternion(q).add(new THREE.Vector3(this.engine.viewPos + L.s, 0, it.e.depth));
+      const centre = new THREE.Vector3(0, L2.h / 2, -L2.D / 2).applyQuaternion(q).add(new THREE.Vector3(this.engine.viewPos + L.s, 0, depthOf(it.e)));
       if (hingedIds.has(L.id)) this.setParts(it, "split", 0, 0);
       else this.setParts(it, "whole", 0, 0);
       this.setCentre(it, centre, q);

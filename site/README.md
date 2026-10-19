@@ -1,16 +1,20 @@
 # Interesting Reads
 
 A personal 3D bookshelf of essays, videos and posts from the *Interesting Reads*
-newsletter, set in a small lit room.
+newsletter, on a flat black page with a hand-drawn feel: a handwritten headline and
+labels, marker-line doodles, and colourful matte books.
 
-- **The shelf.** Each read is a book with a spine colour sampled from its cover,
-  standing on a gently curved shelf that drifts slowly in an endless loop.
-- **Hover.** Hover a book and its neighbours part while it swings round to show a
-  Penguin-style front cover. A caption under the shelf says what it is.
+- **The shelf.** Each read is a book in a matte paper jacket (one of a dozen rich
+  colours with a faint paper grain, soft blended wave shapes at the foot or head, a serif
+  title (a few in tracked capitals), the publication's initials in a circle), standing
+  upright on a slim charcoal shelf traced in off-white marker, gently curved, drifting
+  slowly in an endless loop when the row is wider than the view.
+- **Hover.** Hover a book and it lifts and slides forward; a little doodled arrow points
+  up at it and the caption under the shelf says what it is.
 - **Click.** Click it and the book itself leaves the shelf: it slides out of its
-  slot (tipping a little), lifts in an arc, turns to face you and lands on a reading
-  desk that unfolds below the shelf, next to an index card with the details. Its
-  slot stays empty until "Shelve it" (or Escape) flies it back into it.
+  slot (tipping a little), lifts in an arc, turns to face you and lands on a sketched
+  charcoal table that unfolds below the shelf, next to a black note card with the
+  details. Its slot stays empty until "Shelve it" (or Escape) flies it back into it.
 - **Topics.** Pick a topic and every other book tips off the shelf and tumbles out of
   view (real physics, simulated ahead and played back); nothing lands and nothing lies
   anywhere. Pick their topic again and they rise back into their places from below.
@@ -72,21 +76,22 @@ any base path and on static hosting.
 
 | Action | What happens |
 |---|---|
-| Hover a book | The book lifts a little (~14 px) and slides forward out of the row (~38 % of its depth), with no turn: its cover is not shown until it is opened. Ease out 180 ms (cubic-bezier(0.16, 1, 0.3, 1)), back in 120 ms; a 90 ms leave-grace so a sweep across the row does not flicker. Neighbours stay put. The caption shows title · author · publication · issue (plus a **Paid** tag). Hover is decided by column from the stable layout. Exactly one book is lifted at a time: moving to the next starts the last one settling the same frame. |
+| Hover a book | The book lifts a little (~14 px) and slides forward out of the row (~38 % of its depth), with no turn: its cover is not shown until it is opened. Ease out 180 ms (cubic-bezier(0.16, 1, 0.3, 1)), back in 120 ms; a 90 ms leave-grace so a sweep across the row does not flicker. Neighbours stay put. The caption (the title, handwritten, and publication · issue, plus a **Paid** tag) sets itself directly under the hovered book, centred on it and kept inside the page's gutters and clear of Pause / Surprise me, with a small doodled arrow from it up to the book; with nothing hovered the row shows the hint ("hover a book to see its name · click to open · hold to drag"). The caption row keeps its height. Hover is decided by column from the stable layout. Exactly one book is lifted at a time: moving to the next starts the last one settling the same frame. |
 | Click | The pull-out starts from the lifted pose: the book slides fully out of its slot, then turns to show its cover during the arc to the reading desk below the shelf (the only time a cover shows on the shelf side), and the shelf glides to centre it. The cover it turns is always printed: the covers of the books in view are baked and uploaded at idle after load, the hovered book's ahead of a click, and the clicked book's on the spot before anything moves (the hi-res desk print; the desk's and the hi-res covers' programs are compiled and link-awaited before the shelf shows, with one off-screen warm frame of them in the start-up warm-up, and a production build skips the shader info-log queries at a program's first use, so the first open no longer stalls a frame: ~5 ms of render where it was ~210); should a print still be missing, the turn waits for it up to 150 ms and the shelf-res cover shows rather than a blank board. The URL becomes `#<id>`. A click in the empty band above a short book doesn't open it. |
 | Previous / Next, ← / → in the panel | The adjacent book in the visible order: the shelf glides and the desk swaps. |
 | Shelve it / Esc | The desk folds, the book goes back, and the hash is cleared. |
-| Keyboard | The shelf is one tab stop: a visually hidden list of real buttons (one per book and bookend, in shelf order, roving `tabindex`). Tabbing in highlights the book at the centre, drawn as a two-tone ring projected onto the 3D book (light inner, dark outer, so ≥ 3:1 on any spine or the wall). ← / → move book by book and glide. Enter / Space opens. Closing the desk with the keyboard returns focus and the ring to that book; a mouse close just lets go. The caption's details are announced politely for keyboard and touch browsing. |
+| Keyboard | The shelf is one tab stop: a visually hidden list of real buttons (one per book and bookend, in shelf order, roving `tabindex`). Tabbing in highlights the book at the centre, drawn as a two-tone ring projected onto the 3D book (dark inner, off-white outer, so ≥ 3:1 on any spine or the page). ← / → move book by book and glide. Enter / Space opens. Closing the desk with the keyboard returns focus and the ring to that book; a mouse close just lets go. The caption's details are announced politely for keyboard and touch browsing. |
 | Touch | The first tap lifts the book (as a hover does), a second tap opens it. Over the shelf band a horizontal swipe moves the shelf (with momentum); vertical swipes scroll the page everywhere, the band included (`touch-action: pan-y`; a touch that sets off vertically is left to the page before anything moves). |
+| Click, hold, drag | A quick click (press and release without moving) opens a book. A mouse / pen press held for 200 ms, or moved more than 6 px, is a drag instead: the shelf follows the pointer (with the fling), and letting go opens nothing. The cursor is a pointing hand only on a book itself, the closed hand while a press holds or drags, the arrow elsewhere. Touch is unchanged (tap / second tap / swipe). |
 | Drag / wheel | Only over the **shelf band** (from just above the tallest book to the plank's bottom edge, the full width) do a drag and the wheel move the shelf, with momentum (a vertical wheel there scrolls the shelf sideways, as the guide has it). Over the header, the pills, the caption row, an open desk, the footer and the empty canvas above the books, the wheel and vertical swipes scroll the page as usual: the shelf's `wheel` listener checks the band before it prevents anything, and leaves alone a wheel the browser has already turned into a page scroll (one dispatched after the fact, not cancelable, when the band has scrolled under the pointer) and the rest of a sequence that started scrolling the page (a 150 ms latch, kept by a passive capture listener on `window`, the only other wheel listener there is). Floor books are reached by scrolling the page (or dragged). |
-| Drift | 27 px/s on screen, time-based. It pauses while the pointer is over the shelf, while the desk is open, during drag / wheel / touch (resuming 2.5 s later), when the tab is hidden, with the **Pause** button (WCAG 2.2.2), and under `prefers-reduced-motion` (starts paused). Short rows (≤ 2600 units) don't drift and stay centred. |
-| Surprise me | A heavy carousel spin: ramps up, cruises at ≤ 2400 px/s, then a long soft landing, 2000–3500 px in about 2.2–2.6 s, landing exactly centred on a random read from the current shelf, which then opens. Under reduced motion it jumps straight there. |
-| Topic pills | The books outside the topic fall off the shelf. The ones in view are pushed to the plank's edge and tip over it the moment the pill is clicked; meanwhile a Web Worker simulates the whole fall at 100 Hz (hinged covers for up to 40 fallers) and hands back every frame, which the page plays back from exactly the tipped pose. A faller is gone the moment all of it has passed the stage's bottom edge (the stage ends just under the caption row, or under an open desk): nothing lands, nothing lies anywhere, and the page's height never changes. The ones out of view are simply off the shelf. The remaining books slide together (eased, from 0.9 s) as the fallers clear; every row loops at a constant 27 px/s, short rows tiling with a gap. Pick their topic again and the books rise into their slots from below the stage, each in an arc to just in front of its slot, holding there until the row has closed up, then sliding in. |
+| Drift | 27 px/s on screen, time-based. It pauses while the pointer is over the shelf, while the desk is open, during drag / wheel / touch (resuming 2.5 s later), when the tab is hidden, with the **Pause** button (WCAG 2.2.2), and under `prefers-reduced-motion` (starts paused). A row that isn't wider than the view doesn't loop or drift (see below), and has no Pause button. |
+| Surprise me | A heavy carousel spin: ramps up, cruises at ≤ 2400 px/s, then a long soft landing, 2000–3500 px in about 2.2–2.6 s, landing exactly centred on a random read from the current shelf, which then opens. The button is cream while it spins; on landing a hand-drawn ring circles the book's foot with a handwritten "this one!", fading as the book pulls out. Under reduced motion it jumps straight there (the doodle just shows briefly). |
+| Topic pills | The books outside the topic fall off the shelf. The ones in view are pushed to the plank's edge and tip over it the moment the pill is clicked; meanwhile a Web Worker simulates the whole fall at 100 Hz (hinged covers for up to 40 fallers) and hands back every frame, which the page plays back from exactly the tipped pose. A faller is gone the moment all of it has passed the stage's bottom edge (the stage ends just under the caption row, or under an open desk): nothing lands, nothing lies anywhere, and the page's height never changes. The ones out of view are simply off the shelf. The remaining books slide together (eased, from 0.9 s) as the fallers clear; a row loops (at a constant 27 px/s) only when one copy of it is wider than the visible drum plus a margin each side (`LOOP_MARGIN` in `engine.ts`, decided again on every resize), so **no book is ever on screen twice**; a shorter row (a search with a few results, a small topic) shows each of its books once, centred if it fits, still, and Surprise me just glides to a match on it. Pick their topic again and the books rise into their slots from below the stage, each in an arc to just in front of its slot, holding there until the row has closed up, then sliding in. |
 | Opening books | The fallers nearest the centre (40 on HIGH, 12 on MEDIUM / LOW) are hinged: front cover, page group and the back board with the rest of the pages on two sprung revolute joints at the spine (0° to ~150° / ~80°). The binding decides how a book flops as it tumbles: hardcovers are stiff and shut, paperbacks flop open; a fixed share per book (a hash of its id) is sprung open (a tent, or fanned with page edges showing and a faint typeset title on the first page; inside covers are plain cream). |
 | Where they go | Nowhere: there is no floor. A book outside the topic is off the shelf (the page keeps the set), and the only book ever drawn off the shelf is one falling, one rising back, or the one on the desk. The page below the shelf is the caption row and, while a book is open, the desk; the canvas covers exactly that and is clipped by its wrapper, so a topic switch never changes the page's height. |
 | "{n} read" | The header's read counter is a toggle: on, only the books you've read stay on the shelf and the rest fall (it intersects with the topic pill and the search). Off, they return. If every read is un-marked while it's on, it turns off by itself. Announced as "N books you've read (in {topic})". |
 | Search | Narrows the shelf (in issue order, so the bookends stay meaningful) and glides to the best match; search alone never drops books off the shelf. A topic (or the read filter) chosen while a search is on counts the books outside it that the search had hidden as off the shelf too, so the shelf is the same whichever came first. |
-| Issue bookends | Walnut bookends with an engraved brass `#51` plate sit between issues. Click one to glide to that issue's first read. |
+| Issue bookends | Short mustard books with `#51` in the serif near the top sit between issues. Click one to glide to that issue's first read. |
 | Copy link | Copies `…#<id>`. Opening that URL centres the book and opens the desk; an unknown id is cleared. |
 | Read ribbon | Clicking Read / Watch / Read on X / an archived copy marks the essay read (`localStorage["ir:read"]`, guarded). Read books get a bookmark ribbon on the spine, on the shelf and in the air; the desk shows "You've read this" and a "Mark unread" / "Mark as read" button, and the header shows "{n} read". |
 | Reduced motion | No drift, spin, falls or flights: books fade out of the shelf and back in, and the shelf closes up at once. |
@@ -95,11 +100,13 @@ any base path and on static hosting.
 
 | What | Where |
 |---|---|
-| Typed heading ("Welcome to Interesting Reads") | `FULL` in `src/components/TypedTitle.tsx` |
+| Typed heading ("Interesting Reads by AevyTV", two lines, no caret) | `FULL` in `src/components/TypedTitle.tsx` |
 | Page title, description, og/twitter tags | `index.html` |
 | "A personal archive" label, counters, the read toggle, social links, footer | `src/App.tsx` |
-| Colour palette, desk tones | `:root` in `src/styles.css` (oklch tokens; the light comes from the top-left) |
-| Fonts | self-hosted `public/fonts/*.woff2`, declared in `src/fonts.css` (the h1 face and the spine faces are preloaded in `index.html`) + `--font-*` in `src/styles.css` |
+| Page colours (black `#0B0B0B` page, off-white text, the doodles' marker colour) | `:root` in `src/styles.css` |
+| Book colours (the 12-colour jacket palette, wave companions, the markers' mustard) | `PALETTE`, `COMPANIONS`, `MARKER_COLOUR` in `src/lib/bookStyle.ts` |
+| Fonts | self-hosted `public/fonts/*.woff2` (from `@fontsource`, OFL), declared in `src/fonts.css`. The page: `--font-display` (Caveat, the headline and the desk card's title), `--font-sans` (Architects Daughter, every label, pill, button and the search) and `--font-serif` (Fraunces, the desk card's description) in `src/styles.css`. The books: `FONT` in `src/shelf3d/fonts.ts` (Fraunces titles, Inter tracked capitals). The headline's, the labels' and the spines' faces are preloaded in `index.html` |
+| Doodles (the headline's arrow, the shelf's brackets, the hover arrow, "this one!") | `src/components/Doodles.tsx`; the note card's and the table's outlines: `src/components/Sketch.tsx`; the shelf's marker line: `lipTexture` in `src/shelf3d/bake.ts` |
 | Topics (filter pills) | `scripts/topics.json` (id → 1–2 topics), then `npm run build:data`. The script refuses an item with no topic, more than 2, or more than 10 topics in total. |
 | Hover lift (~14 px net on screen, slide 38 % of the depth, 180 ms out, 120 ms back) | `HOVER_LIFT_PX`, `HOVER_SLIDE`, `HOVER_MS`, `HOVER_BACK_MS` in `src/shelf3d/engine.ts` |
 | The pull-out to the desk (pull 500 ms, arc 700 ms, land 200 ms; back in 1.1 s, 600 ms on Previous / Next; the hash load in 600 ms; the slide-out distance and tip, the desk tilt and roll) | the `PULL_*`, `ARC_MS`, `LAND_MS`, `SHELVE_*`, `FAST_MS`, `DESK_*` constants in `src/shelf3d/ground.ts` |
@@ -109,7 +116,7 @@ any base path and on static hosting.
 | Loop threshold, bookend size, book depth, plank | `src/shelf3d/row.ts` |
 | Stage height (an open desk adds its own height below it) | `STAGE_H` in `src/components/Shelf.tsx` |
 | Lights, materials, quality tiers | `src/shelf3d/scene.ts`, `src/shelf3d/ShelfCanvas.tsx` |
-| Spine / cover / bookend-plate artwork | `src/shelf3d/bake.ts` (canvas drawings); the desk's cover is `src/components/CoverFace.tsx` |
+| Spine / cover / marker-label artwork | `src/shelf3d/bake.ts` (canvas drawings, from `bookStyle()` in `src/lib/bookStyle.ts`); the DOM cover (no-WebGL fallback) is `src/components/CoverFace.tsx` |
 | The fall (push, tip, hold-back, stagger, the simulation's rate and length), the hinges' rest angles and springs per binding, how a book's bindings are sprung (`hashId` → closed / tent / fanned), the return arcs, how many fallers are hinged (`hingedLimit`), the solver's ground (far below the stage) | `src/shelf3d/ground.ts` |
 | Gravity (0.4 g, a touch of slow motion), friction, bounce, damping, the room's walls, the plank collider, the solver's length unit | `src/shelf3d/physics.ts` |
 | Search ranking | `src/lib/search.ts` |
@@ -124,10 +131,11 @@ History & Science, India. (There is no separate format filter.)
   no Python is needed).
   - **Covers** are re-encoded to WebP, 640px on the long side, at quality 72. That's
     about 7.5 MB for 270 images, down from 44 MB.
-  - **Palette** is the guide's `readCoverPalette`, run at build time. The left 6% of
-    the cover becomes `spine`, the most saturated mid-luminance pixel becomes `band`,
-    and `ink` is dark or light by luminance. The 13 items without a cover use the
-    guide's HSL fallback (and a typeset, title-only cover).
+  - **Palette**: the data still carries the guide's `readCoverPalette` sample
+    (`spine`, `band`, `ink`), but the books no longer use it: their jackets come from
+    `src/lib/bookStyle.ts` at runtime (a colour per id from a hash, never the same as the
+    item beside it in the full shelf order, bookends included, so a book keeps its colour
+    under any filter; wave shapes, title style and ink by contrast from the same hash).
   - **Physical props** are deterministic from a hash of the id: binding from the
     format, widths 16–58, lean, depth, wear, face, caps, some foil titles.
   - **Order** is newest issue first.
@@ -151,10 +159,11 @@ History & Science, India. (There is no separate format filter.)
     slide from where they stood to their new slots (after the fallers clear), and
     books flying back get their slots at once but are drawn by the ground until they
     land. The camera is one fixed eye-level view.
-  - `bake.ts` — Canvas 2D drawings of every spine (bands, vertical debossed / foil
-    lettering, publisher mark, wear), the Penguin cover (head band, balanced serif
-    title, framed cover image or a title-only layout, author · publication) and the
-    brass bookend plates.
+  - `bake.ts` — Canvas 2D drawings of every spine (the jacket's colour and waves, the
+    vertical title in Fraunces or tracked Inter capitals, the author in tiny capitals, the
+    initials in a thin circle), the cover (the same jacket, `#N`, the serif title, the
+    cover image as an inset panel or a large `#N`, author · publication), the pages, the
+    markers' `#N` labels and the shelf lip's hand-drawn marker line.
   - `scene.ts` — three.js, imperative. Faces are packed into 2048² atlas pages,
     allocated empty on the GPU and filled one rectangle (with its mip levels) at a
     time; the books in view are drawn with a handful of **InstancedMesh** draw calls
@@ -281,33 +290,39 @@ History & Science, India. (There is no separate format filter.)
 
 ### One light, one room
 
-Everything is lit from the top-left. The canvas is transparent: the page's warm
-paper, its light falloff and grain are the room.
+Everything is lit from the top-left. The canvas is transparent: the page is flat black
+(`#0B0B0B`) from top to bottom, with no wall, light or grain layers, and every shadow the
+scene draws is pure black (a tinted one would lift the page into a halo).
 
-- **Wall.** Warm plaster with grain, a light falloff and a vignette, plus a slow,
-  soft patch of window light. It sits still under reduced motion and is hidden on
-  phones. (DOM/CSS behind the canvas.)
 - **Shelf.** One warm directional key light from the top-left, a soft hemisphere fill
-  and a PMREM'd `RoomEnvironment` for reflections on gloss spines and brass. A wooden
-  plank with a top surface, chamfer and front lip following the drum curve, and the
-  shadows the books and plank cast behind and below them caught by invisible planes
-  (a soft baked shadow on every tier, real shadow-map shadows on HIGH). The ends fade
-  softly into the page.
+  and a PMREM'd `RoomEnvironment`. A slim matte charcoal plank (top, chamfer and front
+  lip following the drum curve) whose lip is traced along its top and bottom edges with a
+  slightly wobbly off-white marker line (a tiling texture, redrawn ~1.5 CSS px thick
+  for the on-screen scale, so it is as crisp on a phone), and two doodled L brackets under
+  it near the ends (DOM, placed by the engine from the drum's projection, under the
+  canvas). The shadows the books cast are caught by invisible planes (a soft baked shadow
+  on every tier, real shadow-map shadows on HIGH). The ends fade softly into the page.
 - **Books** are solid: spine (with a gently rounded normal), front and back boards
   (the back prints the cover duller), a cream page block with real page lines on the
-  top, tail and fore-edge, a headband on hardcovers. Materials per finish: cloth
-  (rough), gloss (low roughness, a moving highlight), matte. Lettering is debossed,
-  or foil on some hardcovers.
-- **Desk.** A wooden desk surface under the canvas, the 3D book lying on it (tilted
-  back 12°, rolled 3°, with a soft contact shadow hugging its bottom and right edges: a
-  signed-distance falloff over ~18 px, at most 0.35, never wider than the feather) and a ruled paper index card
-  above the canvas. There is no second drawing of the book: the one on the shelf is
-  the one on the desk.
+  top, tail and fore-edge, a headband on hardcovers. Every jacket is matte paper
+  (no gloss, foil, deboss or wear). Issue markers are short (126 units) mustard books.
+- **Desk.** A sketched table under the canvas: a slim charcoal top traced in marker, its
+  front edge and two legs (`SketchTable`), sized from the layout so the book always lies
+  wholly on the top (on phones the table carries the book only and the card follows below
+  its legs). The 3D book lies on it (tilted back 12°, rolled 3°, with a soft contact
+  shadow) and a black note card traced in marker sits above the canvas. There is no
+  second drawing of the book: the one on the shelf is the one on the desk.
+- **Doodles.** Arrows only where they point at something: a curly arrow beside the
+  headline pointing down toward the search and the shelf (hidden on phones), an arrow from
+  the caption up to the hovered book, one at the Read button, and on a Surprise landing
+  a ring round the chosen book's foot with a handwritten "this one!" (drawn in, then
+  fading as the book pulls out; under reduced motion it just shows briefly).
 - **Caption.** While a book flies to or from the desk, and while books in view tip, fall
   or fly back to the shelf, the caption's text fades out of its way (150 ms) and back once
   everything has landed; the buttons stay. (The faint caption seen in a recording was this
   DOM caption mid fade-in, 120 ms, on a bookend hover: nothing is drawn in the scene.)
-- **Contrast.** Muted text uses `--muted-foreground` (≈5.7:1 on the wall) without alpha.
+- **Contrast.** Text is off-white `#F3EFE7` on black; muted text uses `--muted-foreground`
+  (`#A39E95`, ≈7.4:1 on the page) without alpha. Focus rings are off-white.
 
 ## Testing hooks
 

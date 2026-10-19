@@ -127,7 +127,8 @@ export function LibraryFilter({ essays, onChange }: Props) {
           data-testid="search-input"
           autoComplete="off"
           spellCheck={false}
-          className="h-12 w-full rounded-full border border-foreground/20 bg-card/70 pl-11 pr-11 text-[15px] text-foreground transition-colors placeholder:font-display placeholder:text-[17px] placeholder:italic placeholder:text-muted-foreground focus:border-primary/60 focus:bg-card/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          // a dark, glassy pill: a faint top-lit fill and a thin light rim
+          className="h-12 w-full rounded-full border border-foreground/30 bg-linear-to-b from-[#1a1a1a] to-[#222] pl-11 pr-11 font-sans text-[13px] uppercase tracking-[0.1em] sm:text-[14px] sm:tracking-[0.16em] text-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.06)] transition-colors placeholder:text-muted-foreground focus:border-foreground/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         />
         {query ? (
           <button
@@ -163,7 +164,7 @@ export function LibraryFilter({ essays, onChange }: Props) {
       </div>
 
       {/* search / filter status (the format row was removed; formats all stay on the shelf) */}
-      <p aria-live="polite" className="mt-1.5 h-4 leading-4 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+      <p aria-live="polite" className="mt-1.5 h-4 leading-4 font-sans text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
         {status}
       </p>
     </div>
@@ -188,10 +189,10 @@ function Pill({
       data-topic={topic}
       aria-pressed={active}
       onClick={onClick}
-      className={`shrink-0 snap-start whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[13.5px] transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+      className={`shrink-0 snap-start whitespace-nowrap rounded-full border px-3.5 py-1.5 font-sans text-[12px] uppercase leading-[1.4] tracking-[0.14em] transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
         active
-          ? "border-foreground bg-foreground text-background"
-          : "border-foreground/14 bg-card/40 text-foreground/80 hover:border-foreground/40 hover:text-foreground"
+          ? "border-cream bg-cream text-background"
+          : "border-foreground/40 text-foreground/90 hover:border-foreground/75 hover:text-foreground"
       }`}
     >
       {children}

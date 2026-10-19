@@ -8,7 +8,8 @@
       name="description"
       content="Interesting Reads: a personal archive of essays, videos and posts worth your time, shelved as a 3D bookshelf you can browse, search and pull from."
     />
-    <meta name="theme-color" content="#e2ded6" />
+    <meta name="theme-color" content="#0b0b0b" />
+    <meta name="color-scheme" content="dark" />
 
     <meta property="og:title" content="Interesting Reads" />
     <meta
@@ -24,14 +25,18 @@
       content="A personal archive of essays, videos and posts worth your time, shelved as a 3D bookshelf."
     />
 
+    <!-- the page is black from the first paint (before the stylesheet arrives) -->
+    <style>html{background:#0b0b0b;color-scheme:dark}</style>
+
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- self-hosted fonts (src/fonts.css): the h1 face first, so the title paints fast,
-         then the faces the 3D shelf letters its spines in (baked as soon as they arrive) -->
-    <link rel="preload" href="/fonts/cormorant-garamond-latin-300-italic.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/cormorant-garamond-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/karla-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/space-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/space-mono-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <!-- self-hosted fonts (src/fonts.css): the headline's and the labels' faces first, so the header paints
+         fast, then the faces the 3D shelf letters its spines in (baked as soon as they arrive) -->
+    <link rel="preload" href="/fonts/caveat-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/architects-daughter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/fraunces-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/fraunces-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin />
   </head>
   <body>
     <script>

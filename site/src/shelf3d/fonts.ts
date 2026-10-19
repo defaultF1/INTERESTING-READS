@@ -1,19 +1,24 @@
 import { essays } from "../data/essays";
 
 /**
- * The faces the shelf's canvases draw with (spine lettering, covers, plates),
- * loaded explicitly and as early as possible: this module starts the loads
- * when the page's main bundle runs, in parallel with the 3D chunk download
- * and the WebGL context. No `document.fonts.ready` (it waits for every font
+ * The two families the shelf's canvases draw with (spine and cover lettering, the issue
+ * markers, the pages): change a face here and every bake follows (the page's own faces are
+ * the --font-* tokens in src/styles.css; both are declared in src/fonts.css).
+ */
+export const FONT = {
+  /** titles, the markers' "#N", page text */
+  serif: '"Fraunces", Georgia, serif',
+  /** tracked capitals: caps titles, authors, initials, small labels */
+  sans: '"Inter", system-ui, sans-serif',
+} as const;
+
+/**
+ * The faces the shelf's canvases draw with, loaded explicitly and as early as possible:
+ * this module starts the loads when the page's main bundle runs, in parallel with the 3D
+ * chunk download and the WebGL context. No `document.fonts.ready` (it waits for every font
  * on the page).
  */
-const SPECS = [
-  `500 20px "Cormorant Garamond"`,
-  `italic 300 20px "Cormorant Garamond"`,
-  `400 12px "Karla"`,
-  `400 10px "Space Mono"`,
-  `700 10px "Space Mono"`,
-];
+const SPECS = [`400 20px ${FONT.serif}`, `500 20px ${FONT.serif}`, `600 20px ${FONT.serif}`, `400 12px ${FONT.sans}`, `500 12px ${FONT.sans}`];
 
 let loading: Promise<boolean> | null = null;
 

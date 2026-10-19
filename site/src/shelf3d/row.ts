@@ -11,12 +11,14 @@ import { leanMarginOf, turnedFootprint } from "../components/bookFaces";
 
 const GAP = 2;
 export const MARKER_W = 24;
-export const MARKER_H = 172;
+/** issue markers are short books: ~57 % of the average essay's height */
+export const MARKER_H = 126;
+/** and as deep as a (slim) book */
+export const MARKER_D = 150;
 export const BOOK_DEPTH = 178; // the guide's COVER_W: how far a book goes back
 /** The plank: its front edge sits this far in front of the spines; the lip is this thick. */
 export const PLANK_FRONT = 40;
 export const LIP = 18;
-/** Rows longer than this loop; shorter ones are centred and don't drift. */
 /** rows with fewer books than this have no bookends (they would repeat every few books) */
 const MIN_BOOKS_FOR_MARKERS = 8;
 
@@ -46,10 +48,15 @@ export class Row {
   readonly S: number;
   /** content length of one copy */
   readonly length: number;
-  readonly looping: boolean;
+  /**
+   * Whether the row repeats forever. Only a row whose one copy is wider than the view loops (a
+   * book is never on screen twice): the engine decides it for the view's width (`loopMin`);
+   * a shorter row shows each book once, centred, and doesn't drift.
+   */
+  looping: boolean;
   private readonly index = new Map<string, number>();
 
-  constructor(essays: Essay[]) {
+  constructor(essays: Essay[], loopMin = 0) {
     const items: RowItem[] = [];
     // a very short row is tiled around the drum many times: bookends every few books would look odd
     const markers = essays.length >= MIN_BOOKS_FOR_MARKERS;
@@ -89,8 +96,7 @@ export class Row {
     });
     this.S = Math.max(1, x);
     this.length = Math.max(0, x - GAP);
-    // every row is a seamless loop at the same drift: a short one simply repeats around the drum
-    this.looping = this.K > 0;
+    this.looping = this.K > 0 && this.S >= loopMin;
   }
 
   kOf(v: number): number {

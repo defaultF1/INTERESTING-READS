@@ -18,11 +18,13 @@ import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 import { setRead, useReadSet } from "../hooks/useReadSet";
 import { ShelfEngine3D, type DeskRect } from "../shelf3d/engine";
 import { reloadOnceOnChunkFailure } from "../lib/reload";
-import { Row, type RowItem } from "../shelf3d/row";
+import { MARKER_COLOUR, MARKER_INK, bookStyle } from "../lib/bookStyle";
+import { MARKER_H, Row, type RowItem } from "../shelf3d/row";
 import type { CanvasInfo } from "../shelf3d/ShelfCanvas";
 import { loadShelfFonts } from "../shelf3d/fonts";
 import { FrameStats } from "../shelf3d/stats";
 import { DetailPanel } from "./DetailPanel";
+import { Bracket, ThisOne, UpArrow } from "./Doodles";
 import { ShelfCaption } from "./ShelfCaption";
 
 /**
@@ -174,12 +176,12 @@ function FallbackShelf({ items, readSet, onOpen }: { items: RowItem[]; readSet: 
             onClick={() => onOpen(it.essay.id)}
             aria-label={`${it.essay.title} by ${it.essay.author}`}
             aria-controls="detail-panel"
-            className="shrink-0 overflow-hidden rounded-[2px] px-0.5 py-2 text-left font-display text-[13px] leading-tight focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="shrink-0 overflow-hidden rounded-[2px] px-0.5 py-2 text-left font-serif text-[13px] leading-tight focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             style={{
               width: it.essay.width,
               height: it.essay.height,
-              background: it.essay.spine,
-              color: it.essay.ink,
+              background: bookStyle(it.essay).base,
+              color: bookStyle(it.essay).ink,
               writingMode: "vertical-rl",
             }}
           >
@@ -189,7 +191,8 @@ function FallbackShelf({ items, readSet, onOpen }: { items: RowItem[]; readSet: 
           <span
             key={it.key}
             aria-hidden="true"
-            className="flex h-[172px] w-6 shrink-0 items-start justify-center rounded-[2px] bg-[#6a4529] pt-3 font-mono text-[10px] text-[#f3e3a6]"
+            className="flex w-6 shrink-0 items-start justify-center rounded-[2px] pt-3 font-serif text-[10px] font-semibold"
+            style={{ height: MARKER_H, background: MARKER_COLOUR, color: MARKER_INK }}
           >
             #{it.issue}
           </span>
@@ -253,6 +256,16 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
   const [swapping, setSwapping] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<HTMLDivElement>(null);
+  // the doodles kept on the 3D shelf by the engine: the brackets under the plank, the hover arrow
+  const bracketL = useRef<HTMLDivElement>(null);
+  const bracketR = useRef<HTMLDivElement>(null);
+  const hoverMarkRef = useRef<HTMLDivElement>(null);
+  // "this one!" round the book a Surprise landed on (stage px), while it pulls out
+  const [spot, setSpot] = useState<{ key: number; left: number; top: number; width: number; height: number } | null>(null);
+  const [spinning, setSpinning] = useState(false);
+  // whether the row loops (and drifts): only when it is wider than the view, so no book is ever
+  // on screen twice; a short row is centred and still (no Pause then)
+  const [looping, setLooping] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -375,8 +388,20 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
       engine.setPanelOpen(false);
       setOpen(null);
     }
-    engine.spinTo(pick.id, (v) => openV(v, false));
+    setSpinning(true);
+    engine.spinTo(pick.id, (v) => {
+      setSpinning(false);
+      // circle it where it landed, then let the doodle fade as it pulls out to the desk
+      const r = engine.rectOf(v);
+      if (r) setSpot({ key: performance.now(), left: r.left, top: r.top, width: r.width, height: r.height });
+      openV(v, false);
+    });
   }, [engine, essays, openV, setOpen, reduced]);
+  useEffect(() => {
+    if (!spot) return;
+    const t = window.setTimeout(() => setSpot(null), reduced ? 1200 : 1400);
+    return () => window.clearTimeout(t);
+  }, [spot, reduced]);
 
   useEffect(() => {
     engine.onActivate = (v) => openV(v);
@@ -388,10 +413,17 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
     const stage = stageRef.current;
     if (!stage || fallback) return;
     engine.focusRing = ringRef.current;
+    engine.brackets = [bracketL.current, bracketR.current].filter((el): el is HTMLDivElement => !!el);
+    engine.hoverMark = hoverMarkRef.current;
+    engine.onLoopChange = setLooping;
+    setLooping(engine.row.looping);
     const detach = engine.attach(stage);
     return () => {
       detach();
       engine.focusRing = null;
+      engine.brackets = [];
+      engine.onLoopChange = () => {};
+      engine.hoverMark = null;
     };
   }, [engine, fallback]);
 
@@ -943,21 +975,21 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
         <div className="relative mx-auto mt-2 flex w-full max-w-5xl items-start gap-4 px-4 sm:px-8">
           <ShelfCaption engine={engine} />
           <div className="flex shrink-0 items-center gap-1.5 pt-1">
-            {row.looping && !fallback ? (
+            {looping && !fallback ? (
               <button
                 type="button"
                 data-testid="drift-toggle"
                 onClick={() => onPausedChange(!paused)}
                 aria-label={paused ? "Play shelf motion" : "Pause shelf motion"}
                 aria-pressed={paused}
-                className="flex h-9 items-center gap-2 rounded-full border border-foreground/15 bg-card/60 px-3 font-mono text-[10.5px] uppercase tracking-[0.16em] text-foreground/80 transition-colors hover:border-foreground/35 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="flex h-9 items-center gap-2 rounded-full border border-foreground/55 px-3 font-sans text-[12px] uppercase tracking-[0.16em] text-foreground/90 transition-colors hover:border-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:px-4"
               >
                 {paused ? (
-                  <svg aria-hidden="true" viewBox="0 0 12 12" className="h-3 w-3" fill="currentColor">
+                  <svg aria-hidden="true" viewBox="0 0 12 12" className="h-3 w-3 sm:hidden" fill="currentColor">
                     <path d="M3 1.8v8.4L10.2 6z" />
                   </svg>
                 ) : (
-                  <svg aria-hidden="true" viewBox="0 0 12 12" className="h-3 w-3" fill="currentColor">
+                  <svg aria-hidden="true" viewBox="0 0 12 12" className="h-3 w-3 sm:hidden" fill="currentColor">
                     <path d="M2.5 1.8h2.6v8.4H2.5zM6.9 1.8h2.6v8.4H6.9z" />
                   </svg>
                 )}
@@ -968,13 +1000,15 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
               type="button"
               data-testid="surprise-me"
               aria-label="Surprise me: spin to a random read"
+              data-spinning={spinning || undefined}
               onClick={surprise}
-              className="flex h-9 items-center gap-2 rounded-full bg-foreground px-3.5 font-mono text-[10.5px] uppercase tracking-[0.16em] text-background transition-colors hover:bg-foreground/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              // (cream while it spins)
+              className="flex h-9 items-center gap-2 rounded-full border border-foreground/55 px-3.5 font-sans text-[12px] uppercase tracking-[0.16em] text-foreground/90 transition-colors hover:border-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-[spinning]:border-cream data-[spinning]:bg-cream data-[spinning]:text-background sm:px-4"
             >
               <svg
                 aria-hidden="true"
                 viewBox="0 0 16 16"
-                className="h-3.5 w-3.5"
+                className="h-3.5 w-3.5 min-[380px]:hidden"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.5"
@@ -1031,7 +1065,8 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
           >
             <div
               ref={stageRef}
-              className={`shelf-stage relative select-none ${fallback ? "" : "cursor-grab active:cursor-grabbing"}`}
+              // (the engine sets the cursor: a pointing hand over a book, the closed hand while held / dragged)
+              className="shelf-stage relative select-none"
               style={fallback ? { height: STAGE_H } : undefined}
             >
               {/* the shelf's own band: the camera frames the shelf in it; the caption row and an open
@@ -1076,10 +1111,35 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
                 </>
               )}
               <div ref={ringRef} aria-hidden="true" className="shelf-focus-ring" />
+              {fallback ? null : (
+                <>
+                  {/* under the canvas (books falling past cover them), placed by the engine */}
+                  <div ref={bracketL} aria-hidden="true" className="shelf-doodle text-doodle">
+                    <Bracket />
+                  </div>
+                  <div ref={bracketR} aria-hidden="true" className="shelf-doodle text-doodle">
+                    <Bracket mirror />
+                  </div>
+                  <div ref={hoverMarkRef} aria-hidden="true" className="shelf-doodle shelf-hover-mark text-doodle/85">
+                    <UpArrow className="h-[22px] w-[15px]" />
+                  </div>
+                  {spot ? (
+                    <div
+                      key={spot.key}
+                      aria-hidden="true"
+                      data-testid="surprise-doodle"
+                      className="shelf-spot text-doodle"
+                      style={{ left: spot.left, top: spot.top, width: spot.width, height: spot.height }}
+                    >
+                      <ThisOne w={spot.width} h={spot.height} />
+                    </div>
+                  ) : null}
+                </>
+              )}
               {essays.length === 0 ? (
                 <div data-testid="shelf-empty" className="absolute inset-x-0 top-0 z-10 flex flex-col items-center justify-center px-6 text-center" style={{ height: STAGE_H }}>
-                  <p className="font-display text-3xl italic text-foreground/80">No reads match</p>
-                  <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{emptyHint}</p>
+                  <p className="font-display text-4xl font-semibold text-foreground/85">No reads match</p>
+                  <p className="mt-2 font-sans text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{emptyHint}</p>
                 </div>
               ) : null}
               {fallback ? null : belowShelf}
