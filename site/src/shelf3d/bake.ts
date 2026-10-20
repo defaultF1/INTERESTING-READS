@@ -305,9 +305,6 @@ function inRegions(ctx: CanvasRenderingContext2D, st: BookStyle, w: number, h: n
 
 // ---------------------------------------------------------------- spines
 
-/** How many spines were baked, and how many had their title cut with "…" (?debug checks). */
-export const spineStats = { baked: 0, cut: 0 };
-
 /**
  * Draw one spine face at density rho (texels per unit) at (ox, oy). Unit space: w × h CSS
  * px, origin top-left. A matte paper jacket: flat colour, the wave shapes at the foot and/or
@@ -380,12 +377,10 @@ export function drawSpine(ctx: CanvasRenderingContext2D, e: Essay, ox: number, o
   }
   let size = fit ? fit.size : minS;
   let lines = fit ? fit.lines : null;
-  spineStats.baked++;
   if (!lines) {
     // not even at the smallest size: as many whole words as fit, the last line ending in "…"
     showAuthor = false;
     size = minS;
-    spineStats.cut++;
     lines = cutAtWords(ctx, text, circleTop - 6 - zoneTop, linesFor(minS), (s) => setFace(s), minS);
   }
   setFace(size);
@@ -508,7 +503,7 @@ export function drawCover(
   ctx.globalAlpha = 0.86;
   ctx.fillText("INTERESTING READS", PADX, 10);
   ctx.textAlign = "right";
-  ctx.font = `${FONT.markerWeight} 7px ${SERIF}`;
+  ctx.font = `600 7px ${SERIF}`;
   setSpacing(ctx, 0, 7);
   ctx.fillText(`#${issue}`, W - PADX, 10);
   ctx.textAlign = "start";
@@ -574,7 +569,7 @@ export function drawCover(
   } else {
     const cy = (midTop + midBottom) / 2;
     ctx.fillStyle = st.ink;
-    ctx.font = `${FONT.markerWeight} 44px ${SERIF}`;
+    ctx.font = `600 44px ${SERIF}`;
     setSpacing(ctx, -0.02, 44);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -883,12 +878,12 @@ export function drawPlate(ctx: CanvasRenderingContext2D, issue: number, ox: numb
   ctx.fillRect(0, 0, W, H);
   const t = `#${issue}`;
   let size = 9;
-  ctx.font = `${FONT.markerWeight} ${size}px ${SERIF}`;
+  ctx.font = `600 ${size}px ${SERIF}`;
   setSpacing(ctx, -0.02, size);
   const tw = ctx.measureText(t).width;
   if (tw > W - 5) {
     size *= (W - 5) / tw;
-    ctx.font = `${FONT.markerWeight} ${size}px ${SERIF}`;
+    ctx.font = `600 ${size}px ${SERIF}`;
     setSpacing(ctx, -0.02, size);
   }
   ctx.textAlign = "center";

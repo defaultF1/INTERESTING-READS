@@ -57,7 +57,7 @@ export function CoverFace({ essay, showImage, u = 1, read = false }: Props) {
         style={{ height: 20 * u, paddingInline: PAD_X * u, color: st.headInk, fontFamily: FONT.sans, fontWeight: 500, fontSize: 5.2 * u, letterSpacing: "0.24em", opacity: 0.86 }}
       >
         <span>Interesting Reads</span>
-        <span style={{ fontFamily: FONT.serif, fontWeight: FONT.markerWeight, fontSize: 7 * u, letterSpacing: 0, textTransform: "none" }}>#{issue}</span>
+        <span style={{ fontFamily: FONT.serif, fontWeight: 600, fontSize: 7 * u, letterSpacing: 0, textTransform: "none" }}>#{issue}</span>
       </span>
 
       <span

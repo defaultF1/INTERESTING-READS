@@ -125,22 +125,6 @@ Topics in use: AI & Tech, Business & Startups, Money & Economics, Mind & Psychol
 Learning & Growth, Life & Philosophy, Culture & Society, World & Politics,
 History & Science, India. (There is no separate format filter.)
 
-## Typography presets
-
-The whole site's type switches in one place: `FONT_PRESET` in `src/lib/fontPreset.ts`.
-
-| Preset | Page | Books |
-|---|---|---|
-| `hand` (default) | Caveat headline and desk title, Architects Daughter labels, Fraunces desk description | Fraunces titles, Inter tracked capitals, markers in Fraunces 600 |
-| `clean` | Jost throughout: a light (300) headline and titles in normal case, Jost 400 tracked capitals for the labels; the desk description keeps Fraunces | Jost 400 / 500 (the same 85 / 15 sentence-case / capitals mix), markers in Jost 500 |
-
-`main.tsx` sets `data-font` on `<html>`; `styles.css` keys the `--face-*` variables (and the
-"clean" weights) on it, and `src/shelf3d/fonts.ts` picks the books' faces for `bake.ts`. Both
-presets' fonts are declared in `src/fonts.css` (self-hosted from `@fontsource`, OFL) and only
-the used ones load; `index.html` preloads the default preset's. `?font=clean` or `?font=hand`
-on the URL previews the other preset without changing the code. The spine titles are fitted
-at bake time with the preset's own face, so they still show in full under either.
-
 ## How it's built
 
 - **`scripts/build-data.mjs`** uses **`sharp`** (a devDependency, prebuilt binaries, so

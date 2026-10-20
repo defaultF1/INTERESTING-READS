@@ -1,28 +1,16 @@
 import { essays } from "../data/essays";
-import { fontPreset } from "../lib/fontPreset";
 
 /**
- * The families the shelf's canvases draw with (spine and cover lettering, the issue markers,
- * the pages), per typography preset (src/lib/fontPreset.ts): change a face here and every bake
- * follows (the page's own faces are the --face-* variables in src/styles.css; all are declared
- * in src/fonts.css).
+ * The two families the shelf's canvases draw with (spine and cover lettering, the issue
+ * markers, the pages): change a face here and every bake follows (the page's own faces are
+ * the --font-* tokens in src/styles.css; both are declared in src/fonts.css).
  */
-const SHELF_FONTS = {
-  hand: {
-    /** titles, the markers' "#N", page text */
-    serif: '"Fraunces", Georgia, serif',
-    /** tracked capitals: caps titles, authors, initials, small labels */
-    sans: '"Inter", system-ui, sans-serif',
-    /** the markers' "#N" and the covers' issue number */
-    markerWeight: 600,
-  },
-  clean: {
-    serif: '"Jost", "Futura", system-ui, sans-serif',
-    sans: '"Jost", "Futura", system-ui, sans-serif',
-    markerWeight: 500,
-  },
+export const FONT = {
+  /** titles, the markers' "#N", page text */
+  serif: '"Fraunces", Georgia, serif',
+  /** tracked capitals: caps titles, authors, initials, small labels */
+  sans: '"Inter", system-ui, sans-serif',
 } as const;
-export const FONT: { serif: string; sans: string; markerWeight: number } = SHELF_FONTS[fontPreset()];
 
 /**
  * The faces the shelf's canvases draw with, loaded explicitly and as early as possible:
@@ -30,7 +18,7 @@ export const FONT: { serif: string; sans: string; markerWeight: number } = SHELF
  * chunk download and the WebGL context. No `document.fonts.ready` (it waits for every font
  * on the page).
  */
-const SPECS = [`400 20px ${FONT.serif}`, `500 20px ${FONT.serif}`, `${FONT.markerWeight} 20px ${FONT.serif}`, `400 12px ${FONT.sans}`, `500 12px ${FONT.sans}`];
+const SPECS = [`400 20px ${FONT.serif}`, `500 20px ${FONT.serif}`, `600 20px ${FONT.serif}`, `400 12px ${FONT.sans}`, `500 12px ${FONT.sans}`];
 
 let loading: Promise<boolean> | null = null;
 
