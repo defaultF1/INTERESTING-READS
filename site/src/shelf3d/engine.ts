@@ -82,12 +82,14 @@ const WHEEL_LATCH_MS = 150;
 const CLICK_TOP_TOLERANCE = 30;
 
 // Framing: the tallest book (over the whole library, so filters don't rescale
-// the shelf) fills the stage between ~11% headroom (room for the hover lift
-// and the turned cover) and the plank + lip, which sit on a thin band at the
+// the shelf) fills the stage between a headroom (13 % of the stage, kept within 40-54 px: the
+// hover lift and a calm gap under the pills) and the plank + lip, which sit on a thin band at the
 // bottom. The eye is just above the tallest book, so the row reads front-on: only a sliver
 // of the shorter books' tops shows, and the plank's front strip.
 const MAX_BOOK_H = Math.max(...ALL_ESSAYS.map((e) => e.height));
-const HEADROOM = 0.11;
+const HEADROOM = 0.13;
+const HEADROOM_MIN_PX = 40;
+const HEADROOM_MAX_PX = 54;
 const BOTTOM_BAND = 0.03;
 const EYE_ABOVE = 24;
 /** A turned cover keeps clear of the stage's soft side fades (7% each side, styles.css) plus this (px). */
@@ -257,7 +259,25 @@ export class ShelfEngine3D {
   hoverMark: HTMLElement | null = null;
   /** The hovered book's centre (stage px; NaN when none), and who wants to know when it moves (the caption). */
   hoverX = NaN;
+  /** The hovered book's top edge as drawn (stage px; NaN when none): where a flipped caption points. */
+  hoverTop = NaN;
   onHoverMarkMove: () => void = () => {};
+  /**
+   * Where the caption sits, so the arrow can point from it: under the shelf (the arrow under the
+   * plank, pointing up), above the hovered book (the arrow over the book's top, pointing down), or
+   * pinned to the bottom of a window too short for either (no arrow: the caption is on the book).
+   */
+  private hoverMarkMode: "under" | "above" | "none" = "under";
+  /** the room (px) between a caption set above the book and the book's top: the arrow fits it */
+  private hoverMarkRoom = 30;
+  setHoverMarkMode(mode: "under" | "above" | "none", room = 30) {
+    room = Math.round(room);
+    if (mode === this.hoverMarkMode && room === this.hoverMarkRoom) return;
+    this.hoverMarkMode = mode;
+    this.hoverMarkRoom = room;
+    this.hoverMarkX = NaN; // (placed again)
+    this.requestFrame();
+  }
 
   stats = { blankFrames: 0, frames: 0 };
 
@@ -283,7 +303,8 @@ export class ShelfEngine3D {
     v.halfW = w / 2;
     const c = v.d / (v.d - PLANK_FRONT);
     v.E = MAX_BOOK_H + EYE_ABOVE;
-    v.k = (frameH * (1 - HEADROOM - BOTTOM_BAND)) / ((v.E + LIP) * c - EYE_ABOVE);
+    const head = Math.min(HEADROOM_MAX_PX, Math.max(frameH * HEADROOM, HEADROOM_MIN_PX));
+    v.k = (frameH * (1 - BOTTOM_BAND) - head) / ((v.E + LIP) * c - EYE_ABOVE);
     v.horizonY = frameH * (1 - BOTTOM_BAND) - v.k * (v.E + LIP) * c;
     this.drum.build(w / 2 / v.k);
     this.turnCentres.clear();
@@ -1434,8 +1455,8 @@ export class ShelfEngine3D {
     if (!mark) return;
     const h = this.hovered !== null && this.selected !== this.hovered ? this.hovered : null;
     if (h === null) {
-      if (!Number.isNaN(this.hoverMarkX)) {
-        this.hoverMarkX = this.hoverX = NaN;
+      if (!Number.isNaN(this.hoverMarkX) || !Number.isNaN(this.hoverTop)) {
+        this.hoverMarkX = this.hoverX = this.hoverTop = NaN;
         mark.style.opacity = "0";
       }
       return;
@@ -1443,16 +1464,26 @@ export class ShelfEngine3D {
     const r = this.rectOf(h);
     // (whole pixels: the lift tween moves it by fractions, which no one would see)
     const x = r ? Math.round(r.left + r.width / 2) : NaN;
-    if (x === this.hoverMarkX || (Number.isNaN(x) && Number.isNaN(this.hoverMarkX))) return;
+    const top = r ? Math.round(r.top) : NaN;
+    const same = (a: number, b: number) => a === b || (Number.isNaN(a) && Number.isNaN(b));
+    if (same(x, this.hoverMarkX) && same(top, this.hoverTop)) return;
     this.hoverMarkX = this.hoverX = x;
+    this.hoverTop = top;
     this.onHoverMarkMove();
-    if (!r) {
+    if (!r || this.hoverMarkMode === "none") {
       mark.style.opacity = "0";
+      return;
+    }
+    mark.style.opacity = "1";
+    if (this.hoverMarkMode === "above") {
+      // over the book's top, pointing down at it, as tall as the room under the caption allows
+      const sc = Math.max(0.45, Math.min(1, (this.hoverMarkRoom - 5) / 22));
+      const cy = top - 3 - 11 * sc;
+      mark.style.transform = `translate3d(${x - 8}px, ${Math.round(cy - 11)}px, 0) rotate(180deg) scale(${sc.toFixed(2)})`;
       return;
     }
     const pt = { x: 0, y: 0 };
     this.project(0, -LIP, PLANK_FRONT, pt);
-    mark.style.opacity = "1";
     mark.style.transform = `translate3d(${x - 8}px, ${Math.round(pt.y + 3)}px, 0)`;
   }
 

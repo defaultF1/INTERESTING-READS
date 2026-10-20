@@ -258,6 +258,51 @@ function fitLines(ctx: CanvasRenderingContext2D, text: string, len: number, max:
   return greedy.length > 1 ? balancedLines(ctx, text, len, max) : greedy;
 }
 
+/**
+ * As many whole words as fit `n` lines of length `len` (the smallest size), the last line ending
+ * in "…": a title is only ever cut at a word, never inside one (unless one word alone is too long).
+ */
+function cutAtWords(ctx: CanvasRenderingContext2D, text: string, len: number, n: number, setFace: (s: number) => void, size: number): string[] {
+  setFace(size);
+  const all = wrapLines(ctx, text, len);
+  if (all.length <= n) return all;
+  const lines = all.slice(0, n);
+  let last = lines[n - 1].split(" ");
+  while (last.length > 1 && ctx.measureText(`${last.join(" ")} …`).width > len) last = last.slice(0, -1);
+  lines[n - 1] = last.length > 1 || ctx.measureText(`${last[0]} …`).width <= len ? `${last.join(" ").replace(/[\s,;:–—-]+$/, "")} …` : ellipsize(ctx, last[0], len);
+  return lines;
+}
+
+/**
+ * Letter across the jacket's colours: `draw(ink)` once per region (the base, and each wave), each
+ * clipped to its region and given the ink that reads on it, so a line can run over a wave.
+ */
+function inRegions(ctx: CanvasRenderingContext2D, st: BookStyle, w: number, h: number, y0: number, y1: number, draw: (ink: string) => void) {
+  // (only the waves the lettering's span [y0, y1] reaches: most titles cross none, drawn once)
+  const waves = st.waves.filter((wv) =>
+    wv.at === "foot" ? y1 > Math.min(wv.y0, wv.ym, wv.y1) * h : y0 < Math.max(wv.y0, wv.ym, wv.y1) * h,
+  );
+  if (!waves.length) {
+    draw(st.ink);
+    return;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, w, h);
+  for (const wv of waves) traceWave(ctx, wv, w, h);
+  ctx.clip("evenodd");
+  draw(st.ink);
+  ctx.restore();
+  for (const wv of waves) {
+    ctx.save();
+    ctx.beginPath();
+    traceWave(ctx, wv, w, h);
+    ctx.clip();
+    draw(wv.at === "foot" ? st.footInk : st.headInk);
+    ctx.restore();
+  }
+}
+
 // ---------------------------------------------------------------- spines
 
 /**
@@ -277,87 +322,97 @@ export function drawSpine(ctx: CanvasRenderingContext2D, e: Essay, ox: number, o
   ctx.clip();
   jacket(ctx, st, w, h);
 
-  // the foot: the initials' circle, the author above it (both on the foot's colour)
+  // the foot: the initials' circle; above it the author (when there's room for both), and the
+  // title from under the head down to there, across the waves (lettered in each region's ink)
   const d = Math.min(15, Math.max(9, w * 0.56));
   const circleY = h - 7 - d / 2;
-  const showAuthor = w >= 19;
-  const authorSize = Math.min(6, Math.max(4.4, w * 0.17));
-  const authorBottom = circleY - d / 2 - 5;
-  const authorTop = h * st.footTop + 6;
-
-  // the title: from just under the head (its wave) down to the foot's wave
+  const circleTop = circleY - d / 2;
   const serif = st.title === "serif";
-  const zoneTop = Math.max(h * 0.06, h * st.headBottom) + 9;
-  const zoneBottom = (st.footTop < 1 ? h * st.footTop : authorBottom - (showAuthor ? 40 : 0)) - 8;
-  const zone = Math.max(30, zoneBottom - zoneTop);
-  const across = w - 6;
-  const maxLines = w >= 44 ? 2 : 1;
-  const [minS, maxS] = serif ? [9.5, Math.min(16, w * 0.52)] : [6.5, Math.min(10.5, w * 0.36)];
+  const zoneTop = Math.max(h * 0.05, h * st.headBottom) + 8;
   const face = serif ? `400 %spx ${SERIF}` : `400 %spx ${SANS}`;
-  const em = serif ? 0 : 0.2;
+  const em = serif ? 0 : 0.18;
   const text = serif ? e.title : e.title.toUpperCase();
-  const linesFor = (s: number) => Math.max(1, Math.min(maxLines, Math.floor(across / (s * 1.12))));
-  // the largest size (in half units) at which the title fits whole: a binary search (a smaller
-  // size fits at least as well), a few measurements per spine
-  const fitAt = (sz: number) => {
-    ctx.font = face.replace("%s", String(sz));
-    setSpacing(ctx, em, sz);
-    return fitLines(ctx, text, zone, linesFor(sz));
+  const [minS, maxS] = serif ? [7, Math.max(7, Math.min(16, w * 0.52))] : [6, Math.max(6, Math.min(10.5, w * 0.36))];
+  // under this size the author gives its room to the title
+  const preferS = serif ? 9.5 : 7;
+  // lines across the spine at a size: as many as its width holds (up to 2 on thin spines, 3 on wide ones)
+  const linesFor = (s: number) => Math.max(1, Math.min(w >= 40 ? 3 : 2, Math.floor((w - 4) / (s * 1.08))));
+  const setFace = (s: number) => {
+    ctx.font = face.replace("%s", String(s));
+    setSpacing(ctx, em, s);
   };
-  let lo = 0;
-  let hi = Math.max(0, Math.floor((Math.max(minS, maxS) - minS) * 2));
-  let lines: string[] | null = fitAt(minS + hi / 2);
-  let size = minS + hi / 2;
-  if (!lines) {
-    hi--;
+  /** The largest size (half units) at which the whole title fits a zone this long: a binary search. */
+  const fitIn = (zone: number) => {
+    let lo = 0;
+    let hi = Math.floor((maxS - minS) * 2);
     let best: { size: number; lines: string[] } | null = null;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      const l = fitAt(minS + mid / 2);
+      const s = minS + mid / 2;
+      setFace(s);
+      const l = fitLines(ctx, text, zone, linesFor(s));
       if (l) {
-        best = { size: minS + mid / 2, lines: l };
+        best = { size: s, lines: l };
         lo = mid + 1;
       } else hi = mid - 1;
     }
-    if (best) {
-      size = best.size;
-      lines = best.lines;
-      ctx.font = face.replace("%s", String(size));
-      setSpacing(ctx, em, size);
+    return best;
+  };
+  const authorSize = Math.min(6, Math.max(4.4, w * 0.17));
+  ctx.font = `500 ${authorSize}px ${SANS}`;
+  setSpacing(ctx, 0.2, authorSize);
+  const authorFull = e.author.toUpperCase();
+  const authorLen = Math.min(ctx.measureText(authorFull).width, h * 0.3);
+  let showAuthor = w >= 19;
+  let zoneBottom = circleTop - 6 - (showAuthor ? authorLen + 8 : 0);
+  let fit = fitIn(zoneBottom - zoneTop);
+  if (showAuthor && (!fit || fit.size < preferS)) {
+    // the whole title first: without the author line it may fit, or fit larger
+    const alt = fitIn(circleTop - 6 - zoneTop);
+    if (alt && (!fit || alt.size > fit.size)) {
+      showAuthor = false;
+      zoneBottom = circleTop - 6;
+      fit = alt;
     }
   }
+  let size = fit ? fit.size : minS;
+  let lines = fit ? fit.lines : null;
   if (!lines) {
+    // not even at the smallest size: as many whole words as fit, the last line ending in "…"
+    showAuthor = false;
     size = minS;
-    ctx.font = face.replace("%s", String(size));
-    setSpacing(ctx, em, size);
-    const n = linesFor(size);
-    lines = wrapLines(ctx, text, zone);
-    if (lines.length > n) lines = [...lines.slice(0, n - 1), ellipsize(ctx, lines.slice(n - 1).join(" "), zone)];
+    lines = cutAtWords(ctx, text, circleTop - 6 - zoneTop, linesFor(minS), (s) => setFace(s), minS);
   }
+  setFace(size);
   const lh = size * 1.1;
-  ctx.fillStyle = st.ink;
   ctx.textBaseline = "middle";
   // rotated 90° clockwise (like vertical-rl): text runs top -> bottom, the first line on the right
-  lines.forEach((l, i, all) => {
-    ctx.save();
-    ctx.translate(w / 2 + ((all.length - 1) / 2 - i) * lh, zoneTop);
-    ctx.rotate(Math.PI / 2);
-    ctx.fillText(l, 0, 0);
-    ctx.restore();
+  const span = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  inRegions(ctx, st, w, h, zoneTop, zoneTop + span, (ink) => {
+    ctx.fillStyle = ink;
+    lines!.forEach((l, i, all) => {
+      ctx.save();
+      ctx.translate(w / 2 + ((all.length - 1) / 2 - i) * lh, zoneTop);
+      ctx.rotate(Math.PI / 2);
+      ctx.fillText(l, 0, 0);
+      ctx.restore();
+    });
   });
 
-  if (showAuthor && authorBottom - authorTop > 14) {
-    ctx.save();
+  if (showAuthor) {
     ctx.font = `500 ${authorSize}px ${SANS}`;
     setSpacing(ctx, 0.2, authorSize);
-    const t = ellipsize(ctx, e.author.toUpperCase(), authorBottom - authorTop);
+    const t = ellipsize(ctx, authorFull, authorLen + 0.5);
     const len = ctx.measureText(t).width;
-    ctx.translate(w / 2, authorBottom - len);
-    ctx.rotate(Math.PI / 2);
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = withAlpha(st.footInk, 0.9);
-    ctx.fillText(t, 0, 0);
-    ctx.restore();
+    const bottom = circleTop - 5;
+    inRegions(ctx, st, w, h, bottom - len, bottom, (ink) => {
+      ctx.save();
+      ctx.translate(w / 2, bottom - len);
+      ctx.rotate(Math.PI / 2);
+      ctx.fillStyle = withAlpha(ink, 0.9);
+      ctx.fillText(t, 0, 0);
+      ctx.restore();
+    });
   }
   initials(ctx, e, w / 2, circleY, d, st.footInk);
 
@@ -459,9 +514,15 @@ export function drawCover(
   let titleSize = len <= 18 ? 19 : len <= 34 ? 17 : len <= 56 ? 15 : len <= 84 ? 13 : 11.5;
   if (!hasPlate) titleSize *= 1.15;
   const maxLines = len > 84 ? 6 : hasPlate ? 4 : 5;
-  ctx.font = `500 ${titleSize}px ${SERIF}`;
-  setSpacing(ctx, -0.01, titleSize);
-  const lines = balancedLines(ctx, title, W - PADX * 2, maxLines);
+  // the whole title, always: smaller until it fits its lines (down to 9), then more lines
+  const titleMax = W - PADX * 2;
+  const setTitle = (sz: number) => {
+    ctx.font = `500 ${sz}px ${SERIF}`;
+    setSpacing(ctx, -0.01, sz);
+  };
+  setTitle(titleSize);
+  while (titleSize > 9 && wrapLines(ctx, title, titleMax).length > maxLines) setTitle((titleSize -= 0.5));
+  const lines = balancedLines(ctx, title, titleMax, 99);
   const lh = titleSize * 1.06;
   ctx.fillStyle = st.ink;
   ctx.textAlign = "center";
@@ -575,7 +636,7 @@ export function drawInnerPage(ctx: CanvasRenderingContext2D, e: Essay | null, ox
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
     ctx.font = `500 ${size}px ${SERIF}`;
-    const lines = balancedLines(ctx, e.title, W - 36, 4);
+    const lines = balancedLines(ctx, e.title, W - 36, 99);
     const lh = size * 1.1;
     let y = h * 0.3;
     for (const line of lines) {
@@ -724,7 +785,7 @@ export function drawTitlePage(ctx: CanvasRenderingContext2D, e: Essay, ox: numbe
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   ctx.font = `500 ${size}px ${SERIF}`;
-  const lines = balancedLines(ctx, e.title, W - 40, 4);
+  const lines = balancedLines(ctx, e.title, W - 40, 99);
   const lh = size * 1.12;
   let y = h * 0.34;
   for (const line of lines) {

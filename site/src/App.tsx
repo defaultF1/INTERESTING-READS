@@ -96,12 +96,11 @@ export default function App() {
         </a>
       </nav>
 
-      <header className="mx-auto w-full max-w-5xl px-4 pt-10 sm:px-8 sm:pt-12">
+      <header className="mx-auto w-full max-w-5xl px-4 pt-8 sm:px-8 sm:pt-8">
         <TypedTitle />
-        <p
-          className="animate-rise mt-2.5 font-sans text-[16px] uppercase tracking-[0.24em] text-muted-foreground sm:mt-2"
-          style={{ animationDelay: "240ms" }}
-        >
+        {/* the counter, with Surprise me at the right end of the same row (the shelf portals it in) */}
+        <div className="animate-rise mt-2.5 flex items-center justify-between gap-4 sm:mt-2" style={{ animationDelay: "240ms" }}>
+        <p className="font-sans text-[16px] uppercase tracking-[0.24em] text-muted-foreground">
           {essays.length} reads
           {readCount > 0 ? (
             <>
@@ -123,10 +122,12 @@ export default function App() {
             </>
           ) : null}
         </p>
+        <div id="surprise-slot" className="shrink-0" />
+        </div>
         <p className="sr-only" aria-live="polite">
           {readNote}
         </p>
-        <div className="animate-rise mt-5 sm:mt-7" style={{ animationDelay: "380ms" }}>
+        <div className="animate-rise mt-4 sm:mt-5" style={{ animationDelay: "380ms" }}>
           <LibraryFilter essays={essays} onChange={onFilter} />
         </div>
       </header>

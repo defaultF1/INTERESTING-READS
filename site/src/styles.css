@@ -197,6 +197,18 @@
 .shelf-hover-mark {
   transition: opacity 150ms ease-out;
 }
+/* the hover caption set above a book (no room under the shelf in the viewport): a little more compact */
+[data-testid="caption-follow"][data-above] .caption-title,
+[data-testid="caption-follow"][data-pinned] .caption-title {
+  font-size: 22px;
+}
+/* pinned over the books (a window too short for under or above): on its own dark backdrop */
+[data-testid="caption-follow"][data-pinned] {
+  border-radius: 12px;
+  padding: 6px 14px 8px;
+  background: rgb(11 11 11 / 0.88);
+  box-shadow: 0 0 0 1px rgb(243 239 231 / 0.18);
+}
 /* "this one!" round a Surprise's book: drawn in, then it fades as the book pulls out */
 .shelf-spot {
   position: absolute;

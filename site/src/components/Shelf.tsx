@@ -13,6 +13,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
 import { essays as ALL_ESSAYS, type Essay } from "../data/essays";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 import { setRead, useReadSet } from "../hooks/useReadSet";
@@ -75,11 +76,14 @@ type Props = {
 /** Glide to centre an opened / browsed book. */
 const OPEN_GLIDE_MS = 800;
 /**
- * The stage height; the engine frames the books to fill it (tallest book ~79%,
- * ~11% headroom for the turned cover, the plank and lip on a thin band below).
- * The width term keeps phones at ~10-14 books across.
+ * The stage height; the engine frames the books to fill it (the tallest book under a headroom of
+ * 13 % kept within 40-54 px, for the hover lift and a calm gap under the pills; the plank and lip
+ * on a thin band below). The width term keeps phones at ~10-14 books across. The books keep the
+ * size they had with an 11 % headroom (86 % of B, B the clamp below), so the stage is the books'
+ * band plus that headroom: (B × 0.86 + head) / 0.97 (engine.ts: HEADROOM).
  */
-const STAGE_H = "clamp(300px, min(48vh, 80vw), 500px)";
+const STAGE_BASE = "clamp(300px, min(48vh, 80vw), 500px)";
+const STAGE_H = `clamp(calc((${STAGE_BASE} * 0.86 + 40px) / 0.97), calc(${STAGE_BASE} * 0.86 / 0.84), calc((${STAGE_BASE} * 0.86 + 54px) / 0.97))`;
 const ALL_ISSUES = [...new Set(ALL_ESSAYS.map((e) => Math.max(...e.issues)))];
 
 const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
@@ -971,10 +975,42 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
     [engine, openV],
   );
 
+  // Surprise me lives in the header (next to the reads counter) via a portal; inline here
+  // only if the page has no slot for it
+  const surpriseButton = (
+  <button
+    type="button"
+    data-testid="surprise-me"
+    aria-label="Surprise me: spin to a random read"
+    data-spinning={spinning || undefined}
+    onClick={surprise}
+    // (cream while it spins)
+    className="flex h-9 items-center gap-2 rounded-full border border-foreground/55 px-3.5 font-sans text-[12px] uppercase tracking-[0.16em] text-foreground/90 transition-colors hover:border-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-[spinning]:border-cream data-[spinning]:bg-cream data-[spinning]:text-background sm:px-4"
+  >
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className="h-3.5 w-3.5 min-[380px]:hidden"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M2 4.5h2.2c1.4 0 2.2.7 3 2l1.6 3c.8 1.3 1.6 2 3 2H14M12 9.6l2 1.9-2 1.9M2 11.5h2.2c.9 0 1.5-.3 2.1-.9M9.5 5.4c.6-.6 1.2-.9 2.1-.9H14M12 2.6l2 1.9-2 1.9" />
+    </svg>
+    <span className="hidden min-[380px]:inline">Surprise me</span>
+  </button>
+  );
+  const [surpriseSlot, setSurpriseSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setSurpriseSlot(document.getElementById("surprise-slot")), []);
+
   const captionRow = (
-        <div className="relative mx-auto mt-2 flex w-full max-w-5xl items-start gap-4 px-4 sm:px-8">
+        <div className="relative mx-auto flex w-full max-w-5xl items-start gap-4 px-4 sm:px-8">
           <ShelfCaption engine={engine} />
           <div className="flex shrink-0 items-center gap-1.5 pt-1">
+            {/* Pause/Play stays for keyboard and screen-reader visitors (WCAG 2.2.2) but is only
+                drawn while it has keyboard focus; the drift already stops under the pointer */}
             {looping && !fallback ? (
               <button
                 type="button"
@@ -982,7 +1018,7 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
                 onClick={() => onPausedChange(!paused)}
                 aria-label={paused ? "Play shelf motion" : "Pause shelf motion"}
                 aria-pressed={paused}
-                className="flex h-9 items-center gap-2 rounded-full border border-foreground/55 px-3 font-sans text-[12px] uppercase tracking-[0.16em] text-foreground/90 transition-colors hover:border-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:px-4"
+                className="sr-only flex h-9 items-center gap-2 rounded-full border border-foreground/55 px-3 font-sans text-[12px] uppercase tracking-[0.16em] text-foreground/90 transition-colors hover:border-foreground hover:text-foreground focus-visible:not-sr-only focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:px-4"
               >
                 {paused ? (
                   <svg aria-hidden="true" viewBox="0 0 12 12" className="h-3 w-3 sm:hidden" fill="currentColor">
@@ -996,29 +1032,7 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
                 <span className="hidden sm:inline">{paused ? "Play" : "Pause"}</span>
               </button>
             ) : null}
-            <button
-              type="button"
-              data-testid="surprise-me"
-              aria-label="Surprise me: spin to a random read"
-              data-spinning={spinning || undefined}
-              onClick={surprise}
-              // (cream while it spins)
-              className="flex h-9 items-center gap-2 rounded-full border border-foreground/55 px-3.5 font-sans text-[12px] uppercase tracking-[0.16em] text-foreground/90 transition-colors hover:border-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-[spinning]:border-cream data-[spinning]:bg-cream data-[spinning]:text-background sm:px-4"
-            >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 16 16"
-                className="h-3.5 w-3.5 min-[380px]:hidden"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M2 4.5h2.2c1.4 0 2.2.7 3 2l1.6 3c.8 1.3 1.6 2 3 2H14M12 9.6l2 1.9-2 1.9M2 11.5h2.2c.9 0 1.5-.3 2.1-.9M9.5 5.4c.6-.6 1.2-.9 2.1-.9H14M12 2.6l2 1.9-2 1.9" />
-              </svg>
-              <span className="hidden min-[380px]:inline">Surprise me</span>
-            </button>
+            {surpriseSlot ? null : surpriseButton}
           </div>
         </div>
   );
@@ -1031,6 +1045,7 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
     <>
       <div className="relative z-10 pb-2" data-flying={deskFlying || undefined}>
         {captionRow}
+        {surpriseSlot ? createPortal(surpriseButton, surpriseSlot) : null}
       </div>
       <div className="desk-area relative">
           <DetailPanel
@@ -1050,7 +1065,9 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
   );
 
   return (
-    <section aria-label="Bookshelf" className="relative">
+    // (pulled up over the space under the pills, which holds only the filter's status line: the
+    // canvas is transparent there, the line shows through, and the books sit close under the pills)
+    <section aria-label="Bookshelf" className="relative -mt-[44px]">
       <div className="relative">
         <div>
           <div
