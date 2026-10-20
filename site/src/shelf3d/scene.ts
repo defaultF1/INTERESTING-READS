@@ -17,6 +17,7 @@ import {
   drawPlate,
   drawTextPage,
   drawTitlePage,
+  spineStats,
   fastLoop,
   drawSpine,
   idleLoop,
@@ -1016,6 +1017,12 @@ export class ShelfScene {
     h.tex.needsUpdate = true;
     h.painted = b.e.id;
     h.paintedWithImg = !!b.img;
+  }
+
+  /** Debug: bake every spine now and report how many had their title cut (?debug checks). */
+  debugBakeAllSpines() {
+    for (const b of this.books.values()) if (!b.spine.drawn) this.paintSpine(b);
+    return { ...spineStats };
   }
 
   /** Debug: one of a book's baked pages at full density, as a data URL. */

@@ -36,13 +36,25 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* The page's faces (declared in src/fonts.css; the books' own are FONT in src/shelf3d/fonts.ts):
-   display = the handwritten headline, sans = the handwritten labels (the page's default),
-   serif = reading text on the desk. Swap a family here and the page follows. */
+/* The page's faces, per typography preset (src/lib/fontPreset.ts sets data-font on <html>;
+   all are declared in src/fonts.css; the books' own are SHELF_FONTS in src/shelf3d/fonts.ts):
+   display = the headline, sans = the labels (the page's default), serif = reading text on the
+   desk. The utilities read the --face-* variables, so the preset switches at runtime. */
+:root,
+:root[data-font="hand"] {
+  --face-display: "Caveat", "Segoe Print", "Bradley Hand", cursive;
+  --face-sans: "Architects Daughter", "Segoe Print", "Bradley Hand", cursive;
+  --face-serif: "Fraunces", ui-serif, Georgia, serif;
+}
+:root[data-font="clean"] {
+  --face-display: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+  --face-sans: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+  --face-serif: "Fraunces", ui-serif, Georgia, serif;
+}
 @theme inline {
-  --font-display: "Caveat", "Segoe Print", "Bradley Hand", cursive;
-  --font-sans: "Architects Daughter", "Segoe Print", "Bradley Hand", cursive;
-  --font-serif: "Fraunces", ui-serif, Georgia, serif;
+  --font-display: var(--face-display);
+  --font-sans: var(--face-sans);
+  --font-serif: var(--face-serif);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -61,6 +73,18 @@
   --color-paper: var(--paper);
   --color-paper-shade: var(--paper-shade);
   --color-shadow: var(--shadow);
+}
+
+/* The "clean" preset's weights and tracking: a light headline and titles in normal case (the
+   handwritten faces are bold and loose); the labels stay tracked capitals, at the regular weight. */
+[data-font="clean"] h1 {
+  font-weight: 300;
+  letter-spacing: -0.02em;
+}
+[data-font="clean"] .caption-title,
+[data-font="clean"] #detail-title {
+  font-weight: 300;
+  letter-spacing: -0.01em;
 }
 
 @layer base {
