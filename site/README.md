@@ -103,7 +103,7 @@ any base path and on static hosting.
 | Typed heading ("Interesting Reads by AevyTV", two lines, no caret) | `FULL` in `src/components/TypedTitle.tsx` |
 | Page title, description, og/twitter tags | `index.html` |
 | "A personal archive" label, counters, the read toggle, social links, footer | `src/App.tsx` |
-| Page colours (black `#0B0B0B` page, off-white text, the doodles' marker colour) | `:root` in `src/styles.css` |
+| Page colours (pure black page, off-white text, the doodles' marker colour) | `:root` in `src/styles.css` |
 | Book colours (the 12-colour jacket palette, wave companions, the markers' mustard) | `PALETTE`, `COMPANIONS`, `MARKER_COLOUR` in `src/lib/bookStyle.ts` |
 | Fonts | self-hosted `public/fonts/*.woff2` (from `@fontsource`, OFL), declared in `src/fonts.css`. The page: `--font-display` (Caveat, the headline and the desk card's title), `--font-sans` (Architects Daughter, every label, pill, button and the search) and `--font-serif` (Fraunces, the desk card's description) in `src/styles.css`. The books: `FONT` in `src/shelf3d/fonts.ts` (Fraunces titles, Inter tracked capitals). The headline's, the labels' and the spines' faces are preloaded in `index.html` |
 | Doodles (the headline's arrow, the shelf's brackets, the hover arrow, "this one!") | `src/components/Doodles.tsx`; the note card's and the table's outlines: `src/components/Sketch.tsx`; the shelf's marker line: `lipTexture` in `src/shelf3d/bake.ts` |
@@ -291,7 +291,7 @@ History & Science, India. (There is no separate format filter.)
 ### One light, one room
 
 Everything is lit from the top-left. The canvas is transparent: the page is flat black
-(`#0B0B0B`) from top to bottom, with no wall, light or grain layers, and every shadow the
+(`#000`) from top to bottom, with no wall, light or grain layers, and every shadow the
 scene draws is pure black (a tinted one would lift the page into a halo).
 
 - **Shelf.** One warm directional key light from the top-left, a soft hemisphere fill

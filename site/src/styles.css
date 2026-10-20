@@ -3,7 +3,7 @@
 
 /* ========================================================================
    Tokens. Change the palette here; components only reference these through
-   Tailwind utilities or var(--…). The page is flat black (#0B0B0B) top to
+   Tailwind utilities or var(--…). The page is pure black (#000) top to
    bottom: the shelf's transparent canvas shows it through.
 
    ONE LIGHT: a warm light from the TOP-LEFT. Every highlight, shade and
@@ -12,14 +12,14 @@
    ======================================================================== */
 :root {
   color-scheme: dark;
-  --background: #0b0b0b;
+  --background: #000;
   --foreground: #f3efe7;
-  --card: #151515;
+  --card: #151515; /* the search pill and other raised surfaces, a step up from the black */
   --card-foreground: #f3efe7;
   --muted: #1c1c1c;
   --muted-foreground: #a39e95; /* ≈7.4:1 on the page: AA */
   --primary: #e9b949; /* the "{k} read" toggle */
-  --primary-foreground: #0b0b0b;
+  --primary-foreground: #000;
   --accent: #2a2723;
   --accent-foreground: #f3efe7;
   --border: rgb(255 255 255 / 0.24);
@@ -85,7 +85,15 @@
   button {
     cursor: pointer;
   }
-  input[type="search"]::-webkit-search-cancel-button {
+  input[type="search"] {
+    /* no native look (Safari paints a dark-scheme field grey): the page styles it */
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: var(--card);
+    color: var(--foreground);
+  }
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration {
     -webkit-appearance: none;
     appearance: none;
   }
@@ -150,16 +158,41 @@
   /* the canvas inside may be taller than the stage for a moment (a book still flying back while
      the desk folds): it never scrolls the page past the footer */
   overflow: clip;
-  /* where the drum turns away, books fade softly into the page; the plank's
-     shadow fades out before the canvas's bottom edge (no visible rectangle) */
-  -webkit-mask-image:
-    linear-gradient(to right, transparent 0, #000 7%, #000 93%, transparent 100%),
-    linear-gradient(to bottom, #000 calc(100% - 16px), transparent 100%);
-  -webkit-mask-composite: source-in;
-  mask-image:
-    linear-gradient(to right, transparent 0, #000 7%, #000 93%, transparent 100%),
-    linear-gradient(to bottom, #000 calc(100% - 16px), transparent 100%);
-  mask-composite: intersect;
+  /* (no mask here: a WebGL canvas under a masked ancestor composites badly in Safari; the fades
+     are page-colour overlays drawn over the canvas, .shelf-edge below) */
+}
+@supports not (overflow: clip) {
+  .shelf-fade {
+    overflow: hidden;
+  }
+}
+/* Where the drum turns away, books fade softly into the page: a strip of the page's colour over
+   each end of the shelf's band (7 % wide, see-through toward the middle); and the plank's shadow
+   fades out before the canvas's bottom edge (a 16 px strip there, so there's no visible rectangle). */
+.shelf-edge {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+}
+.shelf-edge-l,
+.shelf-edge-r {
+  top: 0;
+  width: 7%;
+}
+.shelf-edge-l {
+  left: 0;
+  background: linear-gradient(to right, var(--background), transparent);
+}
+.shelf-edge-r {
+  right: 0;
+  background: linear-gradient(to left, var(--background), transparent);
+}
+.shelf-edge-b {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 16px;
+  background: linear-gradient(to bottom, transparent, var(--background));
 }
 .shelf-fade[data-ready] {
   opacity: 1;
@@ -206,7 +239,7 @@
 [data-testid="caption-follow"][data-pinned] {
   border-radius: 12px;
   padding: 6px 14px 8px;
-  background: rgb(11 11 11 / 0.88);
+  background: rgb(0 0 0 / 0.88);
   box-shadow: 0 0 0 1px rgb(243 239 231 / 0.18);
 }
 /* "this one!" round a Surprise's book: drawn in, then it fades as the book pulls out */
@@ -276,7 +309,7 @@
   position: relative;
   border-radius: 16px;
   padding: clamp(20px, 3.2vw, 34px);
-  background: #0e0e0e;
+  background: #101010; /* a step up from the black page, inside the marker outline */
   color: var(--foreground);
 }
 .doodle-tag {

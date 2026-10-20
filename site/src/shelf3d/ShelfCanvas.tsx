@@ -97,6 +97,10 @@ function Driver({
     const T = info.timings;
     T.module = T_MODULE;
     T.renderer = performance.now();
+    // (a transparent canvas: cleared to nothing, so the page shows through; set here as well as
+    // by `alpha`, which Safari has been known to composite as opaque black)
+    gl.setClearColor(0x000000, 0);
+    gl.setClearAlpha(0);
     const shelf = new ShelfScene(engine, gl);
     T.scene = performance.now();
     shelfRef.current = shelf;

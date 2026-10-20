@@ -1109,6 +1109,10 @@ export function Shelf({ essays, focusId = null, topic = null, readOnly = false, 
                 <>
                   {stalled && !ready ? <FallbackShelf items={row.items} readSet={readSet} onOpen={openById} /> : null}
                 <div className="shelf-fade absolute inset-0 z-[1]" data-ready={(ready && gl === "ok") || undefined} data-swap={swapping || undefined}>
+                  {/* the side fades, over the shelf's band only (never the desk below), and the bottom strip */}
+                  <div aria-hidden="true" className="shelf-edge shelf-edge-l" style={{ height: STAGE_H }} />
+                  <div aria-hidden="true" className="shelf-edge shelf-edge-r" style={{ height: STAGE_H }} />
+                  <div aria-hidden="true" className="shelf-edge shelf-edge-b" />
                   <CanvasBoundary onFail={onFail}>
                     {ShelfCanvas ? (
                       <ShelfCanvas

@@ -128,7 +128,7 @@ export function LibraryFilter({ essays, onChange }: Props) {
           autoComplete="off"
           spellCheck={false}
           // a dark, glassy pill: a faint top-lit fill and a thin light rim
-          className="h-12 w-full rounded-full border border-foreground/30 bg-linear-to-b from-[#1a1a1a] to-[#222] pl-11 pr-11 font-sans text-[13px] uppercase tracking-[0.1em] sm:text-[14px] sm:tracking-[0.16em] text-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.06)] transition-colors placeholder:text-muted-foreground focus:border-foreground/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="h-12 w-full rounded-full border border-foreground/30 bg-linear-to-b from-[#161616] to-[#1f1f1f] pl-11 pr-11 font-sans text-[13px] uppercase tracking-[0.1em] sm:text-[14px] sm:tracking-[0.16em] text-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.06)] transition-colors placeholder:text-muted-foreground focus:border-foreground/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         />
         {query ? (
           <button
